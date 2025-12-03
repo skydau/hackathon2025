@@ -1,139 +1,139 @@
-# MedLogic Platform - Deployment Documentation Summary
+# MedLogic 平台 - 部署文档摘要
 
-This document provides an overview of all deployment documentation and scripts created for the MedLogic Multi-Tenant Medical Platform.
+本文档提供了为 MedLogic 多租户医疗平台创建的所有部署文档和脚本的概述。
 
-## 📚 Documentation Created
+## 📚 已创建的文档
 
-### Core Documentation
+### 核心文档
 
 1. **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)**
-   - Comprehensive deployment instructions
-   - Prerequisites and Azure resource setup
-   - Multiple deployment methods (Helm, kubectl, automated script)
-   - Post-deployment configuration
-   - Verification procedures
-   - Rollback instructions
+   - 全面的部署说明
+   - 先决条件和 Azure 资源设置
+   - 多种部署方法（Helm、kubectl、自动化脚本）
+   - 部署后配置
+   - 验证程序
+   - 回滚说明
 
 2. **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**
-   - Solutions to common deployment issues
-   - Service health diagnostics
-   - Database connectivity problems
-   - Workload Identity troubleshooting
-   - Network and routing issues
-   - Performance optimization
-   - Security and policy issues
+   - 常见部署问题的解决方案
+   - 服务健康诊断
+   - 数据库连接问题
+   - Workload Identity 故障排除
+   - 网络和路由问题
+   - 性能优化
+   - 安全和策略问题
 
 3. **[docs/QUICK_START.md](docs/QUICK_START.md)**
-   - Fast-track deployment guide
-   - Minimal steps to get started
-   - Quick verification procedures
-   - First tenant creation
-   - Clean-up instructions
+   - 快速部署指南
+   - 最少的入门步骤
+   - 快速验证程序
+   - 首个租户创建
+   - 清理说明
 
 4. **[docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md)**
-   - Complete pre-deployment checklist
-   - Build and deployment verification
-   - Post-deployment tasks
-   - Production readiness criteria
-   - Sign-off procedures
+   - 完整的部署前检查清单
+   - 构建和部署验证
+   - 部署后任务
+   - 生产就绪标准
+   - 签核程序
 
 5. **[docs/README.md](docs/README.md)**
-   - Documentation index
-   - Quick links to all resources
-   - Architecture overview
-   - Support information
+   - 文档索引
+   - 所有资源的快速链接
+   - 架构概述
+   - 支持信息
 
-## 🚀 Deployment Scripts
+## 🚀 部署脚本
 
-### 1. Automated Deployment Script
-**Location**: `scripts/deploy.sh`
+### 1. 自动化部署脚本
+**位置**: `scripts/deploy.sh`
 
-**Purpose**: Fully automated deployment of the entire platform
+**用途**: 完全自动化部署整个平台
 
-**Features**:
-- Environment selection (development/staging/production)
-- Custom configuration file support
-- Optional build skipping
-- Optional test skipping
-- Dry-run mode
-- Automatic health verification
-- Deployment summary
+**功能**:
+- 环境选择（开发/预发布/生产）
+- 自定义配置文件支持
+- 可选的跳过构建
+- 可选的跳过测试
+- 试运行模式
+- 自动健康验证
+- 部署摘要
 
-**Usage**:
+**使用方法**:
 ```bash
 ./scripts/deploy.sh --environment production --config values-production.yaml
 ```
 
-**Options**:
-- `-e, --environment`: Deployment environment
-- `-c, --config`: Path to values file
-- `-s, --skip-build`: Skip building images
-- `-t, --skip-tests`: Skip running tests
-- `-d, --dry-run`: Perform dry run
-- `--timeout`: Helm timeout duration
+**选项**:
+- `-e, --environment`: 部署环境
+- `-c, --config`: 配置文件路径
+- `-s, --skip-build`: 跳过构建镜像
+- `-t, --skip-tests`: 跳过运行测试
+- `-d, --dry-run`: 执行试运行
+- `--timeout`: Helm 超时时长
 
-### 2. Build and Push Script
-**Location**: `scripts/build-and-push.sh`
+### 2. 构建和推送脚本
+**位置**: `scripts/build-and-push.sh`
 
-**Purpose**: Build all container images and push to Azure Container Registry
+**用途**: 构建所有容器镜像并推送到 Azure 容器注册表
 
-**Features**:
-- Builds all .NET services
-- Builds NGINX gateway
-- Builds Go-based Tenant Operator
-- Pushes all images to ACR
-- Version tagging support
+**功能**:
+- 构建所有 .NET 服务
+- 构建 NGINX 网关
+- 构建基于 Go 的租户操作器
+- 推送所有镜像到 ACR
+- 版本标签支持
 
-**Usage**:
+**使用方法**:
 ```bash
 ./scripts/build-and-push.sh medlogicacr.azurecr.io [version]
 ```
 
-### 3. End-to-End Test Script
-**Location**: `scripts/e2e-test.sh`
+### 3. 端到端测试脚本
+**位置**: `scripts/e2e-test.sh`
 
-**Purpose**: Verify complete platform functionality
+**用途**: 验证完整的平台功能
 
-**Tests**:
-- Tenant creation
-- Tenant retrieval
-- Device registration
-- Device-to-tenant mapping
-- Tenant status updates
-- Rate limiting
-- Tenant isolation
+**测试内容**:
+- 租户创建
+- 租户检索
+- 设备注册
+- 设备到租户的映射
+- 租户状态更新
+- 速率限制
+- 租户隔离
 
-**Usage**:
+**使用方法**:
 ```bash
 ./scripts/e2e-test.sh
 ```
 
-### 4. Diagnostics Collection Script
-**Location**: `scripts/collect-diagnostics.sh`
+### 4. 诊断收集脚本
+**位置**: `scripts/collect-diagnostics.sh`
 
-**Purpose**: Collect comprehensive diagnostic information for troubleshooting
+**用途**: 收集全面的诊断信息用于故障排除
 
-**Collects**:
-- Cluster information
-- Pod logs and descriptions
-- Service configurations
-- Events
-- Resource usage
-- Network policies
-- CRDs and custom resources
-- Helm releases
+**收集内容**:
+- 集群信息
+- Pod 日志和描述
+- 服务配置
+- 事件
+- 资源使用情况
+- 网络策略
+- CRD 和自定义资源
+- Helm 发布
 
-**Usage**:
+**使用方法**:
 ```bash
 ./scripts/collect-diagnostics.sh
 ```
 
-**Output**: Creates a timestamped tar.gz archive with all diagnostics
+**输出**: 创建带时间戳的 tar.gz 归档文件，包含所有诊断信息
 
-## 📦 Helm Chart
+## 📦 Helm 图表
 
-### Chart Structure
-**Location**: `helm/medlogic-platform/`
+### 图表结构
+**位置**: `helm/medlogic-platform/`
 
 ```
 helm/medlogic-platform/

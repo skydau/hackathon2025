@@ -1,4 +1,4 @@
-# Multi-Tenant Medical Platform
+# 多租户医疗平台
 
 下一代多租户医疗后台系统 - 基于Kubernetes的云原生多租户平台
 
@@ -26,9 +26,9 @@ MedLogicPlatform/
 ### 1. 项目基础架构 ✅
 
 - ✅ .NET 9解决方案结构
-- ✅ Tenant Catalog Service (ASP.NET Core Web API)
-- ✅ Device Registry Service (ASP.NET Core Web API)
-- ✅ SharedLibrary (共享库项目)
+- ✅ 租户目录服务 (ASP.NET Core Web API)
+- ✅ 设备注册服务 (ASP.NET Core Web API)
+- ✅ 共享库项目
 - ✅ Entity Framework Core配置
 - ✅ Serilog日志记录
 - ✅ 健康检查端点 (/health, /health/ready)
@@ -69,27 +69,27 @@ dotnet test --filter "FullyQualifiedName~DbContextTests"
 ### 运行服务
 
 ```bash
-# Tenant Catalog Service
+# 租户目录服务
 dotnet run --project src/TenantCatalogService
 
-# Device Registry Service
+# 设备注册服务
 dotnet run --project src/DeviceRegistryService
 
-# Admin UI (管理界面)
+# 管理界面
 dotnet run --project src/AdminUI
 ```
 
-访问 Admin UI: http://localhost:5002
+访问管理界面: http://localhost:5002
 
 ### 使用管理界面
 
-Admin UI 提供了一个简单的 Web 界面用于:
+管理界面提供了一个简单的 Web 界面用于:
 - 创建和查看租户
 - 注册设备并关联到租户
 - 查看平台监控仪表盘
 - 嵌入 Grafana 可视化
 
-详细使用说明请参考: [Admin UI Quick Start](src/AdminUI/QUICK_START.md)
+详细使用说明请参考: [管理界面快速入门](src/AdminUI/QUICK_START.md)
 
 ## 健康检查
 
@@ -101,10 +101,10 @@ Admin UI 提供了一个简单的 Web 界面用于:
 ## Docker构建
 
 ```bash
-# 构建Tenant Catalog Service
+# 构建租户目录服务
 docker build -f src/TenantCatalogService/Dockerfile -t medlogic/tenant-catalog-service:latest .
 
-# 构建Device Registry Service
+# 构建设备注册服务
 docker build -f src/DeviceRegistryService/Dockerfile -t medlogic/device-registry-service:latest .
 ```
 
