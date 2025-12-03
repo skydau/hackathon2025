@@ -1,0 +1,140 @@
+@page "/monitoring"
+@rendermode InteractiveServer
+
+<PageTitle>Monitoring</PageTitle>
+
+<h1>Monitoring Dashboard</h1>
+
+<div class="row mb-4">
+    <div class="col">
+        <div class="alert alert-info">
+            <strong>Note:</strong> This page embeds Grafana dashboards. Ensure Grafana is running and accessible.
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col">
+        <label class="form-label">Grafana URL:</label>
+        <div class="input-group">
+            <input type="text" class="form-control" @bind="grafanaUrl" placeholder="http://localhost:3000" />
+            <button class="btn btn-primary" @onclick="UpdateDashboard">Load Dashboard</button>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(dashboardUrl))
+{
+    <div class="row">
+        <div class="col">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Platform Metrics</h5>
+                    <a href="@grafanaUrl" target="_blank" class="btn btn-sm btn-outline-primary">
+                        Open in Grafana <span class="bi bi-box-arrow-up-right"></span>
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    <iframe 
+                        src="@dashboardUrl" 
+                        width="100%" 
+                        height="600" 
+                        frameborder="0"
+                        style="border: none;">
+                    </iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Quick Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Total Tenants</span>
+                            <span class="badge bg-primary rounded-pill">@totalTenants</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Active Devices</span>
+                            <span class="badge bg-success rounded-pill">@activeDevices</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>System Health</span>
+                            <span class="badge bg-success rounded-pill">Healthy</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Monitoring Links</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="@(grafanaUrl)/d/tenant-overview" target="_blank" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Tenant Overview</h6>
+                                <span class="bi bi-box-arrow-up-right"></span>
+                            </div>
+                            <p class="mb-1 small text-muted">Per-tenant metrics and SLO tracking</p>
+                        </a>
+                        <a href="@(grafanaUrl)/d/platform-health" target="_blank" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Platform Health</h6>
+                                <span class="bi bi-box-arrow-up-right"></span>
+                            </div>
+                            <p class="mb-1 small text-muted">Overall system health and performance</p>
+                        </a>
+                        <a href="@(grafanaUrl)/explore" target="_blank" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Log Explorer</h6>
+                                <span class="bi bi-box-arrow-up-right"></span>
+                            </div>
+                            <p class="mb-1 small text-muted">Query logs with Loki</p>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-warning">
+        Please enter a Grafana URL and click "Load Dashboard" to view monitoring data.
+    </div>
+}
+
+@code {
+    private string grafanaUrl = "http://localhost:3000";
+    private string dashboardUrl = string.Empty;
+    private int totalTenants = 0;
+    private int activeDevices = 0;
+
+    protected override void OnInitialized()
+    {
+        // Set default dashboard URL
+        UpdateDashboard();
+        
+        // Mock data for demo
+        totalTenants = 3;
+        activeDevices = 12;
+    }
+
+    private void UpdateDashboard()
+    {
+        if (!string.IsNullOrEmpty(grafanaUrl))
+        {
+            // Construct embedded dashboard URL
+            // In production, this would point to a specific dashboard
+            dashboardUrl = $"{grafanaUrl}/d-solo/platform-overview?orgId=1&theme=light&panelId=1";
+        }
+    }
+}

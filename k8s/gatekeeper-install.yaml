@@ -1,0 +1,13 @@
+# OPA Gatekeeper Installation
+# This file contains instructions for installing OPA Gatekeeper
+# 
+# To install Gatekeeper, run:
+# kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.14/deploy/gatekeeper.yaml
+#
+# Or use Helm:
+# helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+# helm install gatekeeper/gatekeeper --name-template=gatekeeper --namespace gatekeeper-system --create-namespace
+#
+# Verify installation:
+# kubectl get pods -n gatekeeper-system
+# kubectl get crd | grep gatekeeper

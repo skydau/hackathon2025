@@ -1,0 +1,191 @@
+@page "/devices"
+@using AdminUI.Services
+@inject DeviceRegistryClient DeviceClient
+@inject TenantCatalogClient TenantClient
+@rendermode InteractiveServer
+
+<PageTitle>Devices</PageTitle>
+
+<h1>Device Registry</h1>
+
+<div class="row mb-4">
+    <div class="col">
+        <button class="btn btn-primary" @onclick="ShowRegisterForm">
+            <span class="bi bi-plus-circle"></span> Register New Device
+        </button>
+    </div>
+</div>
+
+@if (showRegisterForm)
+{
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Register New Device</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="@newDevice" OnValidSubmit="@RegisterDevice">
+                <div class="mb-3">
+                    <label class="form-label">Serial Number</label>
+                    <InputText class="form-control" @bind-Value="newDevice.SerialNumber" placeholder="e.g., MED-12345" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tenant</label>
+                    <InputSelect class="form-select" @bind-Value="newDevice.TenantId">
+                        <option value="">-- Select Tenant --</option>
+                        @foreach (var tenant in tenants)
+                        {
+                            <option value="@tenant.Id">@tenant.DisplayName (@tenant.Id)</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Device Type</label>
+                    <InputSelect class="form-select" @bind-Value="newDevice.DeviceType">
+                        <option value="medDispense">medDispense Station</option>
+                        <option value="medMonitor">Medical Monitor</option>
+                        <option value="medPump">Infusion Pump</option>
+                    </InputSelect>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success" disabled="@isRegistering">
+                        @if (isRegistering)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        Register Device
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelRegister">Cancel</button>
+                </div>
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger mt-3">@errorMessage</div>
+                }
+                @if (!string.IsNullOrEmpty(successMessage))
+                {
+                    <div class="alert alert-success mt-3">@successMessage</div>
+                }
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (isLoading)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (devices.Count == 0)
+{
+    <div class="alert alert-info">No devices registered. Register your first device to get started.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Serial Number</th>
+                    <th>Tenant ID</th>
+                    <th>Device Type</th>
+                    <th>Registered</th>
+                    <th>Last Seen</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var device in devices)
+                {
+                    <tr>
+                        <td><code>@device.SerialNumber</code></td>
+                        <td><code>@device.TenantId</code></td>
+                        <td>
+                            <span class="badge bg-info">@device.DeviceType</span>
+                        </td>
+                        <td>@device.RegisteredAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>
+                            @if (device.LastSeenAt.HasValue)
+                            {
+                                @device.LastSeenAt.Value.ToString("yyyy-MM-dd HH:mm")
+                            }
+                            else
+                            {
+                                <span class="text-muted">Never</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<DeviceDto> devices = new();
+    private List<TenantDto> tenants = new();
+    private RegisterDeviceRequest newDevice = new();
+    private bool showRegisterForm = false;
+    private bool isLoading = true;
+    private bool isRegistering = false;
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        devices = await DeviceClient.GetDevicesAsync();
+        tenants = await TenantClient.GetTenantsAsync();
+        isLoading = false;
+    }
+
+    private void ShowRegisterForm()
+    {
+        showRegisterForm = true;
+        newDevice = new RegisterDeviceRequest
+        {
+            DeviceType = "medDispense"
+        };
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+    }
+
+    private void CancelRegister()
+    {
+        showRegisterForm = false;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+    }
+
+    private async Task RegisterDevice()
+    {
+        isRegistering = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var result = await DeviceClient.RegisterDeviceAsync(newDevice);
+            if (result != null)
+            {
+                successMessage = $"Device '{result.SerialNumber}' registered successfully to tenant {result.TenantId}";
+                await LoadData();
+                await Task.Delay(2000);
+                showRegisterForm = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to register device: {ex.Message}";
+        }
+        finally
+        {
+            isRegistering = false;
+        }
+    }
+}

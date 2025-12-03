@@ -1,0 +1,241 @@
+# Default values for medlogic-platform
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# Namespace configuration
+namespaces:
+  platformSystem: platform-system
+  gateway: gateway
+  observability: observability
+
+# Tenant Catalog Service
+tenantCatalog:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogic/tenant-catalog-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  healthCheck:
+    liveness:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readiness:
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+  database:
+    server: ""
+    name: TenantCatalog
+    # Connection string will be retrieved from Azure Key Vault
+  azure:
+    workloadIdentity:
+      enabled: true
+      clientId: ""
+      tenantId: ""
+
+# Device Registry Service
+deviceRegistry:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogic/device-registry-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  healthCheck:
+    liveness:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readiness:
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+  database:
+    server: ""
+    name: DeviceRegistry
+  azure:
+    workloadIdentity:
+      enabled: true
+      clientId: ""
+      tenantId: ""
+
+# MedLogic Service (Example Backend)
+medlogicService:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogic/medlogic-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  healthCheck:
+    liveness:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readiness:
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+  azure:
+    workloadIdentity:
+      enabled: true
+      clientId: ""
+      tenantId: ""
+
+# Smart Gateway (NGINX)
+smartGateway:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogic/smart-gateway
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: LoadBalancer
+    port: 80
+    annotations: {}
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  healthCheck:
+    liveness:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    readiness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 5
+  affinity:
+    podAntiAffinity:
+      enabled: true
+
+# Admin UI
+adminUI:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: medlogic/admin-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# Tenant Operator
+tenantOperator:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: medlogic/tenant-operator
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  azure:
+    keyVault:
+      name: ""
+      tenantId: ""
+    workloadIdentity:
+      enabled: true
+      clientId: ""
+
+# OPA Gatekeeper
+gatekeeper:
+  enabled: true
+  install: true
+  constraints:
+    tenantLabel:
+      enabled: true
+    noCrossTenantNetPol:
+      enabled: true
+
+# Observability Stack
+observability:
+  enabled: true
+  prometheus:
+    enabled: true
+    retention: 15d
+    storageSize: 50Gi
+  loki:
+    enabled: true
+    retention: 30d
+    storageSize: 100Gi
+  grafana:
+    enabled: true
+    adminPassword: ""
+
+# Azure Configuration
+azure:
+  subscriptionId: ""
+  resourceGroup: ""
+  location: "eastus"
+  keyVault:
+    name: ""
+  sqlServer:
+    name: ""
+    adminLogin: ""
+
+# Security
+security:
+  networkPolicies:
+    enabled: true
+  podSecurityPolicy:
+    enabled: false
+  tls:
+    enabled: false
+    certManager:
+      enabled: false

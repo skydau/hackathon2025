@@ -1,0 +1,171 @@
+﻿@page "/"
+@using AdminUI.Services
+@inject TenantCatalogClient TenantClient
+@inject DeviceRegistryClient DeviceClient
+@rendermode InteractiveServer
+
+<PageTitle>Dashboard</PageTitle>
+
+<h1>MedLogic Platform Dashboard</h1>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Total Tenants</h5>
+                <h2 class="card-text">@tenantCount</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Registered Devices</h5>
+                <h2 class="card-text">@deviceCount</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">Active Tenants</h5>
+                <h2 class="card-text">@activeTenantCount</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">System Status</h5>
+                <h2 class="card-text">Healthy</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/tenants" class="btn btn-outline-primary">
+                        <span class="bi bi-building"></span> Manage Tenants
+                    </a>
+                    <a href="/devices" class="btn btn-outline-success">
+                        <span class="bi bi-device-hdd"></span> Register Devices
+                    </a>
+                    <a href="/monitoring" class="btn btn-outline-info">
+                        <span class="bi bi-graph-up"></span> View Monitoring
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                @if (isLoading)
+                {
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (recentTenants.Count > 0)
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var tenant in recentTenants.Take(5))
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@tenant.DisplayName</strong>
+                                    <br />
+                                    <small class="text-muted">Created @tenant.CreatedAt.ToString("yyyy-MM-dd")</small>
+                                </div>
+                                <span class="badge @GetStatusBadgeClass(tenant.Status)">
+                                    @tenant.Status
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted">No recent activity</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h5>About MedLogic Platform</h5>
+            </div>
+            <div class="card-body">
+                <p>
+                    MedLogic Platform is a cloud-native multi-tenant medical backend system designed for TouchPoint Medical.
+                    The platform enables multiple hospitals (tenants) to securely share infrastructure while maintaining
+                    strict data isolation and security boundaries.
+                </p>
+                <h6>Key Features:</h6>
+                <ul>
+                    <li>Automated tenant lifecycle management</li>
+                    <li>Device-to-tenant routing with smart gateway</li>
+                    <li>Per-tenant database isolation with encryption</li>
+                    <li>Network-level isolation with Kubernetes policies</li>
+                    <li>Comprehensive monitoring and SLO tracking</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int tenantCount = 0;
+    private int deviceCount = 0;
+    private int activeTenantCount = 0;
+    private List<TenantDto> recentTenants = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        isLoading = true;
+        
+        var tenants = await TenantClient.GetTenantsAsync();
+        var devices = await DeviceClient.GetDevicesAsync();
+        
+        tenantCount = tenants.Count;
+        deviceCount = devices.Count;
+        activeTenantCount = tenants.Count(t => t.Status == "Enabled");
+        recentTenants = tenants.OrderByDescending(t => t.CreatedAt).ToList();
+        
+        isLoading = false;
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Enabled" => "bg-success",
+            "Provisioning" => "bg-warning",
+            "Disabled" => "bg-secondary",
+            "Decommissioned" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}

@@ -1,0 +1,93 @@
+{{- if .Values.tenantCatalog.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-catalog-service
+  namespace: {{ .Values.namespaces.platformSystem }}
+  labels:
+    app: tenant-catalog-service
+    {{- include "medlogic-platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.tenantCatalog.replicaCount }}
+  selector:
+    matchLabels:
+      app: tenant-catalog-service
+  template:
+    metadata:
+      labels:
+        app: tenant-catalog-service
+        {{- if .Values.tenantCatalog.azure.workloadIdentity.enabled }}
+        azure.workload.identity/use: "true"
+        {{- end }}
+    spec:
+      serviceAccountName: tenant-catalog-sa
+      containers:
+      - name: tenant-catalog-service
+        image: {{ .Values.tenantCatalog.image.repository }}:{{ .Values.tenantCatalog.image.tag }}
+        imagePullPolicy: {{ .Values.tenantCatalog.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.tenantCatalog.service.port }}
+          name: http
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:{{ .Values.tenantCatalog.service.port }}"
+        {{- if .Values.tenantCatalog.azure.workloadIdentity.enabled }}
+        - name: AZURE_CLIENT_ID
+          value: {{ .Values.tenantCatalog.azure.workloadIdentity.clientId | quote }}
+        - name: AZURE_TENANT_ID
+          value: {{ .Values.tenantCatalog.azure.workloadIdentity.tenantId | quote }}
+        - name: AZURE_FEDERATED_TOKEN_FILE
+          value: "/var/run/secrets/azure/tokens/azure-identity-token"
+        {{- end }}
+        {{- if .Values.tenantCatalog.database.server }}
+        - name: DATABASE_SERVER
+          value: {{ .Values.tenantCatalog.database.server | quote }}
+        - name: DATABASE_NAME
+          value: {{ .Values.tenantCatalog.database.name | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.tenantCatalog.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.tenantCatalog.healthCheck.liveness.path }}
+            port: {{ .Values.tenantCatalog.service.port }}
+          initialDelaySeconds: {{ .Values.tenantCatalog.healthCheck.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.tenantCatalog.healthCheck.liveness.periodSeconds }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.tenantCatalog.healthCheck.readiness.path }}
+            port: {{ .Values.tenantCatalog.service.port }}
+          initialDelaySeconds: {{ .Values.tenantCatalog.healthCheck.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.tenantCatalog.healthCheck.readiness.periodSeconds }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-catalog
+  namespace: {{ .Values.namespaces.platformSystem }}
+  labels:
+    app: tenant-catalog-service
+    {{- include "medlogic-platform.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.tenantCatalog.service.type }}
+  selector:
+    app: tenant-catalog-service
+  ports:
+  - name: http
+    protocol: TCP
+    port: {{ .Values.tenantCatalog.service.port }}
+    targetPort: {{ .Values.tenantCatalog.service.port }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tenant-catalog-sa
+  namespace: {{ .Values.namespaces.platformSystem }}
+  {{- if .Values.tenantCatalog.azure.workloadIdentity.enabled }}
+  annotations:
+    azure.workload.identity/client-id: {{ .Values.tenantCatalog.azure.workloadIdentity.clientId | quote }}
+    azure.workload.identity/tenant-id: {{ .Values.tenantCatalog.azure.workloadIdentity.tenantId | quote }}
+  {{- end }}
+{{- end }}

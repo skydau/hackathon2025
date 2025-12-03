@@ -1,0 +1,82 @@
+{{- if .Values.smartGateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-gateway
+  namespace: {{ .Values.namespaces.gateway }}
+  labels:
+    app: smart-gateway
+    {{- include "medlogic-platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.smartGateway.replicaCount }}
+  selector:
+    matchLabels:
+      app: smart-gateway
+  template:
+    metadata:
+      labels:
+        app: smart-gateway
+    spec:
+      {{- if .Values.smartGateway.affinity.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - smart-gateway
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      containers:
+      - name: nginx
+        image: {{ .Values.smartGateway.image.repository }}:{{ .Values.smartGateway.image.tag }}
+        imagePullPolicy: {{ .Values.smartGateway.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.smartGateway.service.port }}
+          name: http
+        env:
+        - name: DEVICE_REGISTRY_URL
+          value: "http://device-registry.{{ .Values.namespaces.platformSystem }}.svc.cluster.local:8080"
+        - name: TENANT_CATALOG_URL
+          value: "http://tenant-catalog.{{ .Values.namespaces.platformSystem }}.svc.cluster.local:8080"
+        resources:
+          {{- toYaml .Values.smartGateway.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.smartGateway.healthCheck.liveness.path }}
+            port: {{ .Values.smartGateway.service.port }}
+          initialDelaySeconds: {{ .Values.smartGateway.healthCheck.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.smartGateway.healthCheck.liveness.periodSeconds }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.smartGateway.healthCheck.readiness.path }}
+            port: {{ .Values.smartGateway.service.port }}
+          initialDelaySeconds: {{ .Values.smartGateway.healthCheck.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.smartGateway.healthCheck.readiness.periodSeconds }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smart-gateway
+  namespace: {{ .Values.namespaces.gateway }}
+  labels:
+    app: smart-gateway
+    {{- include "medlogic-platform.labels" . | nindent 4 }}
+  {{- with .Values.smartGateway.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.smartGateway.service.type }}
+  selector:
+    app: smart-gateway
+  ports:
+  - port: {{ .Values.smartGateway.service.port }}
+    targetPort: {{ .Values.smartGateway.service.port }}
+    protocol: TCP
+    name: http
+{{- end }}

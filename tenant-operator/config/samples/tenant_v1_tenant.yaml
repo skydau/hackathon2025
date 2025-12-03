@@ -1,0 +1,15 @@
+apiVersion: tenants.medlogic.io/v1
+kind: Tenant
+metadata:
+  name: hospital-a
+spec:
+  displayName: "Hospital A"
+  db:
+    mode: perDatabase
+    server: sqlserver.default.svc.cluster.local
+    database: HospitalA_DB
+  throttling:
+    rps: 100
+  slo:
+    availability: "99.9%"
+    p95_latency_ms: 1000

@@ -1,0 +1,78 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8snocrosstenannetpol
+  annotations:
+    description: "Prevents creation of NetworkPolicies that allow cross-tenant communication"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sNoCrossTenantNetPol
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            message:
+              type: string
+              description: "Custom error message to display when validation fails"
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8snocrosstenannetpol
+
+        violation[{"msg": msg}] {
+          # Check if this is a NetworkPolicy
+          input.review.object.kind == "NetworkPolicy"
+          
+          # Get the namespace of the NetworkPolicy
+          netpol_namespace := input.review.object.metadata.namespace
+          
+          # Check if this is in a tenant namespace
+          startswith(netpol_namespace, "tenant-")
+          
+          # Extract tenant ID from namespace (e.g., "tenant-hospital-a" -> "hospital-a")
+          netpol_tenant := substring(netpol_namespace, 7, -1)
+          
+          # Check ingress rules for cross-tenant access
+          ingress_rule := input.review.object.spec.ingress[_]
+          from_rule := ingress_rule.from[_]
+          
+          # Check if rule allows from another namespace
+          from_namespace := from_rule.namespaceSelector.matchLabels.name
+          
+          # Check if the target namespace is a different tenant namespace
+          startswith(from_namespace, "tenant-")
+          from_tenant := substring(from_namespace, 7, -1)
+          from_tenant != netpol_tenant
+          
+          msg := sprintf("NetworkPolicy %v in namespace %v attempts to allow traffic from different tenant namespace %v", [input.review.object.metadata.name, netpol_namespace, from_namespace])
+        }
+
+        violation[{"msg": msg}] {
+          # Check if this is a NetworkPolicy
+          input.review.object.kind == "NetworkPolicy"
+          
+          # Get the namespace of the NetworkPolicy
+          netpol_namespace := input.review.object.metadata.namespace
+          
+          # Check if this is in a tenant namespace
+          startswith(netpol_namespace, "tenant-")
+          
+          # Extract tenant ID from namespace
+          netpol_tenant := substring(netpol_namespace, 7, -1)
+          
+          # Check egress rules for cross-tenant access
+          egress_rule := input.review.object.spec.egress[_]
+          to_rule := egress_rule.to[_]
+          
+          # Check if rule allows to another namespace
+          to_namespace := to_rule.namespaceSelector.matchLabels.name
+          
+          # Check if the target namespace is a different tenant namespace
+          startswith(to_namespace, "tenant-")
+          to_tenant := substring(to_namespace, 7, -1)
+          to_tenant != netpol_tenant
+          
+          msg := sprintf("NetworkPolicy %v in namespace %v attempts to allow traffic to different tenant namespace %v", [input.review.object.metadata.name, netpol_namespace, to_namespace])
+        }

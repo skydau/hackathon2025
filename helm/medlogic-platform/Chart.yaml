@@ -1,0 +1,14 @@
+apiVersion: v2
+name: medlogic-platform
+description: A Helm chart for MedLogic Multi-Tenant Medical Platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - multi-tenant
+  - medical
+  - healthcare
+  - kubernetes
+maintainers:
+  - name: MedLogic Platform Team
+    email: platform@medlogic.io

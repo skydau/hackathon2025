@@ -1,0 +1,41 @@
+# Azure Workload Identity Setup for Multi-Tenant Medical Platform
+# This file contains the configuration for AKS Workload Identity integration
+
+---
+# ServiceAccount for Tenant Catalog Service with Workload Identity
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tenant-catalog-sa
+  namespace: platform-system
+  annotations:
+    azure.workload.identity/client-id: "${TENANT_CATALOG_CLIENT_ID}"
+    azure.workload.identity/tenant-id: "${AZURE_TENANT_ID}"
+  labels:
+    azure.workload.identity/use: "true"
+
+---
+# ServiceAccount for Device Registry Service with Workload Identity
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: device-registry-sa
+  namespace: platform-system
+  annotations:
+    azure.workload.identity/client-id: "${DEVICE_REGISTRY_CLIENT_ID}"
+    azure.workload.identity/tenant-id: "${AZURE_TENANT_ID}"
+  labels:
+    azure.workload.identity/use: "true"
+
+---
+# ServiceAccount for Backend Microservices with Workload Identity
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: medlogic-service-sa
+  namespace: platform-system
+  annotations:
+    azure.workload.identity/client-id: "${MEDLOGIC_SERVICE_CLIENT_ID}"
+    azure.workload.identity/tenant-id: "${AZURE_TENANT_ID}"
+  labels:
+    azure.workload.identity/use: "true"

@@ -1,0 +1,214 @@
+@page "/tenants"
+@using AdminUI.Services
+@inject TenantCatalogClient TenantClient
+@rendermode InteractiveServer
+
+<PageTitle>Tenants</PageTitle>
+
+<h1>Tenant Management</h1>
+
+<div class="row mb-4">
+    <div class="col">
+        <button class="btn btn-primary" @onclick="ShowCreateForm">
+            <span class="bi bi-plus-circle"></span> Create New Tenant
+        </button>
+    </div>
+</div>
+
+@if (showCreateForm)
+{
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Create New Tenant</h5>
+        </div>
+        <div class="card-body">
+            <EditForm Model="@newTenant" OnValidSubmit="@CreateTenant">
+                <div class="mb-3">
+                    <label class="form-label">Display Name</label>
+                    <InputText class="form-control" @bind-Value="newTenant.DisplayName" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Database Mode</label>
+                    <InputSelect class="form-select" @bind-Value="newTenant.DbMode">
+                        <option value="perDatabase">Database per Tenant</option>
+                        <option value="perSchema">Schema per Tenant</option>
+                    </InputSelect>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Database Server</label>
+                    <InputText class="form-control" @bind-Value="newTenant.DbServer" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Database Name</label>
+                    <InputText class="form-control" @bind-Value="newTenant.DbDatabase" />
+                </div>
+                @if (newTenant.DbMode == "perSchema")
+                {
+                    <div class="mb-3">
+                        <label class="form-label">Schema Name</label>
+                        <InputText class="form-control" @bind-Value="newTenant.DbSchema" />
+                    </div>
+                }
+                <div class="mb-3">
+                    <label class="form-label">Rate Limit (RPS)</label>
+                    <InputNumber class="form-control" @bind-Value="newTenant.ThrottlingRps" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">SLO Availability (e.g., 99.9%)</label>
+                    <InputText class="form-control" @bind-Value="newTenant.SloAvailability" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">SLO P95 Latency (ms)</label>
+                    <InputNumber class="form-control" @bind-Value="newTenant.SloP95LatencyMs" />
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success" disabled="@isCreating">
+                        @if (isCreating)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        Create Tenant
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelCreate">Cancel</button>
+                </div>
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger mt-3">@errorMessage</div>
+                }
+                @if (!string.IsNullOrEmpty(successMessage))
+                {
+                    <div class="alert alert-success mt-3">@successMessage</div>
+                }
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (isLoading)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (tenants.Count == 0)
+{
+    <div class="alert alert-info">No tenants found. Create your first tenant to get started.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Display Name</th>
+                    <th>Status</th>
+                    <th>Database Mode</th>
+                    <th>Rate Limit</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var tenant in tenants)
+                {
+                    <tr>
+                        <td><code>@tenant.Id</code></td>
+                        <td>@tenant.DisplayName</td>
+                        <td>
+                            <span class="badge @GetStatusBadgeClass(tenant.Status)">
+                                @tenant.Status
+                            </span>
+                        </td>
+                        <td>@tenant.DbConfig?.Mode</td>
+                        <td>@tenant.Throttling?.Rps RPS</td>
+                        <td>@tenant.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<TenantDto> tenants = new();
+    private CreateTenantRequest newTenant = new();
+    private bool showCreateForm = false;
+    private bool isLoading = true;
+    private bool isCreating = false;
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenants();
+    }
+
+    private async Task LoadTenants()
+    {
+        isLoading = true;
+        tenants = await TenantClient.GetTenantsAsync();
+        isLoading = false;
+    }
+
+    private void ShowCreateForm()
+    {
+        showCreateForm = true;
+        newTenant = new CreateTenantRequest
+        {
+            DbMode = "perDatabase",
+            ThrottlingRps = 100,
+            SloAvailability = "99.9%",
+            SloP95LatencyMs = 1000
+        };
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+    }
+
+    private void CancelCreate()
+    {
+        showCreateForm = false;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+    }
+
+    private async Task CreateTenant()
+    {
+        isCreating = true;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+
+        try
+        {
+            var result = await TenantClient.CreateTenantAsync(newTenant);
+            if (result != null)
+            {
+                successMessage = $"Tenant '{result.DisplayName}' created successfully with ID: {result.Id}";
+                await LoadTenants();
+                await Task.Delay(2000);
+                showCreateForm = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to create tenant: {ex.Message}";
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Enabled" => "bg-success",
+            "Provisioning" => "bg-warning",
+            "Disabled" => "bg-secondary",
+            "Decommissioned" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}

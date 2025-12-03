@@ -1,0 +1,13 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sNoCrossTenantNetPol
+metadata:
+  name: no-cross-tenant-networkpolicy
+spec:
+  match:
+    kinds:
+      - apiGroups: ["networking.k8s.io"]
+        kinds: ["NetworkPolicy"]
+    namespaces:
+      - "tenant-*"
+  parameters:
+    message: "NetworkPolicies in tenant namespaces cannot allow cross-tenant communication"

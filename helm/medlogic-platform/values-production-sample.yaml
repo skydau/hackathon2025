@@ -1,0 +1,158 @@
+# Sample Production Values for MedLogic Platform
+# Copy this file and customize for your environment
+
+global:
+  imageRegistry: medlogicacr.azurecr.io
+
+namespaces:
+  platformSystem: platform-system
+  gateway: gateway
+  observability: observability
+
+tenantCatalog:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogicacr.azurecr.io/tenant-catalog-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  database:
+    server: medlogic-prod-sql.database.windows.net
+    name: TenantCatalog
+  azure:
+    workloadIdentity:
+      enabled: true
+      clientId: "00000000-0000-0000-0000-000000000000"  # Replace with actual client ID
+      tenantId: "00000000-0000-0000-0000-000000000000"  # Replace with actual tenant ID
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+deviceRegistry:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogicacr.azurecr.io/device-registry-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  database:
+    server: medlogic-prod-sql.database.windows.net
+    name: DeviceRegistry
+  azure:
+    workloadIdentity:
+      enabled: true
+      clientId: "00000000-0000-0000-0000-000000000000"  # Replace with actual client ID
+      tenantId: "00000000-0000-0000-0000-000000000000"  # Replace with actual tenant ID
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+medlogicService:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogicacr.azurecr.io/medlogic-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  azure:
+    workloadIdentity:
+      enabled: true
+      clientId: "00000000-0000-0000-0000-000000000000"  # Replace with actual client ID
+      tenantId: "00000000-0000-0000-0000-000000000000"  # Replace with actual tenant ID
+
+smartGateway:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: medlogicacr.azurecr.io/smart-gateway
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: LoadBalancer
+    port: 80
+    annotations:
+      service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  affinity:
+    podAntiAffinity:
+      enabled: true
+
+adminUI:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: medlogicacr.azurecr.io/admin-ui
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+tenantOperator:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: medlogicacr.azurecr.io/tenant-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  azure:
+    keyVault:
+      name: medlogic-prod-kv
+      tenantId: "00000000-0000-0000-0000-000000000000"  # Replace with actual tenant ID
+    workloadIdentity:
+      enabled: true
+      clientId: "00000000-0000-0000-0000-000000000000"  # Replace with actual client ID
+
+gatekeeper:
+  enabled: true
+  install: true
+  constraints:
+    tenantLabel:
+      enabled: true
+    noCrossTenantNetPol:
+      enabled: true
+
+observability:
+  enabled: true
+  prometheus:
+    enabled: true
+    retention: 30d
+    storageSize: 100Gi
+  loki:
+    enabled: true
+    retention: 60d
+    storageSize: 200Gi
+  grafana:
+    enabled: true
+    adminPassword: ""  # Set via secret or generate
+
+azure:
+  subscriptionId: "00000000-0000-0000-0000-000000000000"  # Replace with actual subscription ID
+  resourceGroup: medlogic-prod-rg
+  location: eastus
+  keyVault:
+    name: medlogic-prod-kv
+  sqlServer:
+    name: medlogic-prod-sql
+    adminLogin: sqladmin
+
+security:
+  networkPolicies:
+    enabled: true
+  podSecurityPolicy:
+    enabled: false
+  tls:
+    enabled: true
+    certManager:
+      enabled: true

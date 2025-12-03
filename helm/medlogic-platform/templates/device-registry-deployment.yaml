@@ -1,0 +1,85 @@
+{{- if .Values.deviceRegistry.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: device-registry-service
+  namespace: {{ .Values.namespaces.platformSystem }}
+  labels:
+    app: device-registry-service
+    {{- include "medlogic-platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.deviceRegistry.replicaCount }}
+  selector:
+    matchLabels:
+      app: device-registry-service
+  template:
+    metadata:
+      labels:
+        app: device-registry-service
+        {{- if .Values.deviceRegistry.azure.workloadIdentity.enabled }}
+        azure.workload.identity/use: "true"
+        {{- end }}
+    spec:
+      serviceAccountName: device-registry-sa
+      containers:
+      - name: device-registry-service
+        image: {{ .Values.deviceRegistry.image.repository }}:{{ .Values.deviceRegistry.image.tag }}
+        imagePullPolicy: {{ .Values.deviceRegistry.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.deviceRegistry.service.port }}
+          name: http
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:{{ .Values.deviceRegistry.service.port }}"
+        {{- if .Values.deviceRegistry.azure.workloadIdentity.enabled }}
+        - name: AZURE_CLIENT_ID
+          value: {{ .Values.deviceRegistry.azure.workloadIdentity.clientId | quote }}
+        - name: AZURE_TENANT_ID
+          value: {{ .Values.deviceRegistry.azure.workloadIdentity.tenantId | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.deviceRegistry.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.deviceRegistry.healthCheck.liveness.path }}
+            port: {{ .Values.deviceRegistry.service.port }}
+          initialDelaySeconds: {{ .Values.deviceRegistry.healthCheck.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.deviceRegistry.healthCheck.liveness.periodSeconds }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.deviceRegistry.healthCheck.readiness.path }}
+            port: {{ .Values.deviceRegistry.service.port }}
+          initialDelaySeconds: {{ .Values.deviceRegistry.healthCheck.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.deviceRegistry.healthCheck.readiness.periodSeconds }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: device-registry
+  namespace: {{ .Values.namespaces.platformSystem }}
+  labels:
+    app: device-registry-service
+    {{- include "medlogic-platform.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.deviceRegistry.service.type }}
+  selector:
+    app: device-registry-service
+  ports:
+  - name: http
+    protocol: TCP
+    port: {{ .Values.deviceRegistry.service.port }}
+    targetPort: {{ .Values.deviceRegistry.service.port }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: device-registry-sa
+  namespace: {{ .Values.namespaces.platformSystem }}
+  {{- if .Values.deviceRegistry.azure.workloadIdentity.enabled }}
+  annotations:
+    azure.workload.identity/client-id: {{ .Values.deviceRegistry.azure.workloadIdentity.clientId | quote }}
+    azure.workload.identity/tenant-id: {{ .Values.deviceRegistry.azure.workloadIdentity.tenantId | quote }}
+  {{- end }}
+{{- end }}

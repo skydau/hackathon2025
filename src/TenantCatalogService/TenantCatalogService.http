@@ -1,0 +1,6 @@
+@TenantCatalogService_HostAddress = http://localhost:5095
+
+GET {{TenantCatalogService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
