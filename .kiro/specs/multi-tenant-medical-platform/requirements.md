@@ -46,6 +46,10 @@
 3. WHEN Tenant Operator创建命名空间后 THEN Tenant Operator SHALL 应用ResourceQuota以限制该租户的CPU和内存使用
 4. WHEN Tenant Operator创建命名空间后 THEN Tenant Operator SHALL 应用NetworkPolicy以默认禁止跨命名空间的网络访问
 5. WHEN Tenant Operator创建命名空间后 THEN Tenant Operator SHALL 配置RBAC规则以限制对该命名空间的访问权限
+6. WHEN Tenant CRD指定Database-per-Tenant模式 THEN Tenant Operator SHALL 自动创建该租户的专属数据库实例
+7. WHEN 租户数据库被创建 THEN Tenant Operator SHALL 执行数据库初始化脚本创建必需的表结构
+8. WHEN 租户数据库创建失败 THEN Tenant Operator SHALL 更新Tenant CRD状态为Failed并记录错误详情
+9. WHEN 租户数据库创建成功 THEN Tenant Operator SHALL 将数据库连接信息存储到Tenant Catalog Service
 
 ### 需求 3: 设备注册与租户映射
 

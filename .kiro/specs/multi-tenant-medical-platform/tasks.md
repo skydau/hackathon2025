@@ -129,11 +129,11 @@
 
 
   - 创建TenantDBRouter NuGet包项目
-  - 实现租户级数据库连接管理
+  - 实现租户级数据库连接管理（每个租户独立数据库）
   - 实现从X-Tenant-Id头提取租户ID的中间件
   - 实现调用Tenant Catalog获取数据库配置的客户端
-  - 实现Database-per-Tenant和Schema-per-Tenant两种模式支持
-  - _需求: 6.1, 6.2, 6.3, 6.4, 6.5, 7.1, 7.2, 7.4, 7.5_
+  - 实现从Kubernetes Secret读取数据库密码
+  - _需求: 6.1, 6.2, 6.3, 6.4, 6.5, 7.1, 7.2, 7.3_
 
 - [x] 4.1 编写属性测试：DB Router提取租户ID
 
@@ -167,14 +167,14 @@
   - **验证需求: 6.5**
 
 
-- [x] 4.6 编写属性测试：Database-per-Tenant模式连接专属数据库
+- [x] 4.6 编写属性测试：每个租户连接专属数据库
 
-  - **属性 31: Database-per-Tenant模式连接专属数据库**
+  - **属性 31: 每个租户连接专属数据库**
   - **验证需求: 7.1**
 
-- [x] 4.7 编写属性测试：Schema-per-Tenant模式使用租户模式
+- [x] 4.7 编写属性测试：租户连接池独立
 
-  - **属性 32: Schema-per-Tenant模式使用租户模式**
+  - **属性 32: 租户连接池独立**
   - **验证需求: 7.2**
 
 - [x] 5. 配置Smart Gateway (NGINX)
@@ -219,10 +219,10 @@
 
 
   - 使用kubebuilder初始化Operator项目
-  - 定义Tenant CRD (tenants.medlogic.io/v1)
+  - 定义Tenant CRD (tenants.medlogic.io/v1)，移除数据库模式选项
   - 实现Reconcile循环处理Tenant资源创建
   - 实现命名空间自动创建逻辑
-  - 实现ConfigMap和Secret引用创建
+  - 实现ConfigMap和Secret创建
   - 实现ResourceQuota应用
   - 实现NetworkPolicy应用
   - 实现RBAC规则配置
@@ -269,53 +269,82 @@
   - **属性 10: 命名空间配置RBAC**
   - **验证需求: 2.5**
 
-- [x] 7. 集成Azure Key Vault密钥管理
+- [ ] 6.6 实现数据库自动创建功能（本地SQL Server）
+  - 在Tenant Operator中实现DatabaseProvisioner组件
+  - 实现通过host.minikube.internal连接本地SQL Server
+  - 为每个租户创建独立的数据库实例（使用SQL Server管理员凭据）
+  - 实现数据库用户创建和权限配置
+  - 实现TDE加密自动启用（可选）
+  - 实现数据库初始化脚本执行
+  - 实现将数据库凭据存储到Kubernetes Secret
+  - 实现数据库配置注册到Tenant Catalog
+  - 实现错误处理和回滚机制
+  - _需求: 2.6, 2.7, 2.8, 2.9_
+
+- [ ] 6.7 编写属性测试：Operator自动创建租户数据库
+  - **属性 33: Operator自动创建租户数据库**
+  - **验证需求: 7.3**
+
+- [ ] 6.8 编写属性测试：数据库初始化脚本执行
+  - **属性 10.2: 数据库初始化脚本执行**
+  - **验证需求: 2.7**
+
+- [ ] 6.9 编写属性测试：数据库创建失败状态更新
+  - **属性 10.3: 数据库创建失败状态更新**
+  - **验证需求: 2.8**
+
+- [ ] 6.10 编写属性测试：数据库配置注册到Catalog
+  - **属性 10.4: 数据库配置注册到Catalog**
+  - **验证需求: 2.9**
+
+- [x] 7. 集成Kubernetes Secret密钥管理
 
 
 
 
 
-  - 在Tenant Operator中实现Azure Key Vault客户端
-  - 实现租户创建时在Key Vault中创建数据库凭据
-  - 配置Secrets Store CSI Driver for Azure Key Vault
-  - 实现Pod启动时挂载密钥文件
-  - 实现租户删除时吊销和删除密钥
+  - 在Tenant Operator中实现Kubernetes Secret创建逻辑
+  - 实现租户创建时生成数据库凭据并存储到Secret
+  - 配置微服务Pod挂载Secret（环境变量或文件）
+  - 实现DB Router从Secret读取数据库密码
+  - 实现租户删除时删除相关Secret
   - _需求: 9.1, 9.2, 9.5_
 
-- [x] 7.1 编写属性测试：租户创建时创建密钥
+- [x] 7.1 编写属性测试：租户创建时创建Secret
 
 
-  - **属性 41: 租户创建时创建密钥**
+  - **属性 41: 租户创建时创建Secret**
   - **验证需求: 9.1**
 
-- [x] 7.2 编写集成测试：密钥轮换自动更新
+- [x] 7.2 编写集成测试：Secret更新后Pod重启
 
 
-  - 测试密钥轮换后Pod内文件更新
+  - 测试Secret更新后Pod能够获取新凭据
   - _需求: 9.3_
 
-- [x] 7.3 编写属性测试：租户删除时删除密钥
+- [x] 7.3 编写属性测试：租户删除时删除Secret
 
 
-  - **属性 45: 租户删除时删除密钥**
+  - **属性 45: 租户删除时删除Secret**
   - **验证需求: 9.5**
 
-- [x] 8. 配置AKS Workload Identity
+- [x] 8. 配置SQL Server认证
 
 
 
 
 
-  - 为微服务Pod配置Workload Identity
-  - 配置Azure AD应用注册和联合身份凭据
-  - 实现微服务使用Workload Identity访问Key Vault
-  - 实现微服务使用Workload Identity访问SQL Server
+  - 配置微服务使用SQL Server用户名/密码认证
+  - 实现从Kubernetes Secret读取数据库凭据
+  - 配置连接字符串使用host.minikube.internal访问宿主机SQL Server
+  - 实现连接字符串加密和安全存储
+  - 测试微服务与本地SQL Server的连接
   - _需求: 9.4_
 
-- [x] 8.1 编写集成测试：Workload Identity无凭据访问
+- [x] 8.1 编写集成测试：SQL Server认证访问
 
 
-  - 验证微服务可以无凭据访问数据库和Key Vault
+  - 验证微服务可以使用Secret中的凭据访问数据库
   - _需求: 9.4_
 
 - [x] 9. 实现数据加密
@@ -523,14 +552,14 @@
   - **属性 61: 退服首先创建备份**
   - **验证需求: 13.2**
 
-- [x] 14.3 编写属性测试：备份后吊销密钥
+- [x] 14.3 编写属性测试：备份后删除Secret
 
-  - **属性 62: 备份后吊销密钥**
+  - **属性 62: 备份后删除Secret**
   - **验证需求: 13.3**
 
-- [x] 14.4 编写属性测试：密钥吊销后删除命名空间
+- [x] 14.4 编写属性测试：Secret删除后删除命名空间
 
-  - **属性 63: 密钥吊销后删除命名空间**
+  - **属性 63: Secret删除后删除命名空间**
   - **验证需求: 13.4**
 
 - [x] 14.5 编写属性测试：退服保留审计日志
@@ -604,19 +633,32 @@
   - 实现基本的监控仪表盘（嵌入Grafana）
   - _需求: 1.1, 1.2, 3.1_
 
-- [x] 18. 编写部署文档和脚本
+- [ ] 18. 配置本地开发环境
+
+
+
+
+
+  - 编写本地SQL Server安装和配置指南
+  - 创建Minikube启动脚本和配置
+  - 创建SQL Server管理员Secret部署脚本
+  - 配置host.minikube.internal网络访问
+  - 测试Minikube Pod到宿主机SQL Server的连接
+  - 编写本地环境故障排查指南
+
+- [x] 19. 编写部署文档和脚本
 
 
 
 
 
   - 编写Kubernetes部署清单（Deployment、Service、Ingress）
-  - 编写Helm Chart用于简化部署
+  - 编写本地环境部署清单（使用imagePullPolicy: Never）
   - 编写部署文档，包含前置条件和步骤说明
-  - 创建自动化部署脚本
+  - 创建自动化部署脚本（构建镜像、部署到Minikube）
   - 编写故障排查指南
 
-- [x] 19. 最终检查点 - 确保所有测试通过
+- [x] 20. 最终检查点 - 确保所有测试通过
 
 
 

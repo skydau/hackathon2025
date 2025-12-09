@@ -4,10 +4,12 @@
 
 本设计文档描述了下一代多租户医疗后台系统的技术架构。该系统基于Kubernetes构建，采用云原生设计模式，为多个医院租户提供共享基础设施，同时确保严格的资源、网络和数据隔离。
 
+**部署环境**: 本系统设计为在本地环境部署，使用Minikube作为Kubernetes运行时，数据库使用独立部署的本地MS SQL Server实例。
+
 系统的核心设计理念是：
 - **声明式自动化**: 通过Kubernetes Operator模式实现租户生命周期的自动化管理
 - **解耦与可扩展**: 设备、租户和数据库之间通过注册表和路由层解耦
-- **纵深防御**: 在网络、身份、密钥和数据层构建多层安全隔离
+- **本地优先**: 所有组件在本地环境运行，无需云服务依赖
 - **精细化运营**: 支持按租户维度的监控、告警和成本核算
 
 ## 架构
@@ -22,55 +24,73 @@
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      智能网关层                                    │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Smart Gateway (NGINX/Envoy)                             │   │
-│  │  - 设备识别                                                │   │
-│  │  - 租户ID注入 (X-Tenant-Id)                               │   │
-│  │  - 租户级速率限制                                           │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
+│                   Minikube Cluster (本地)                         │
+│                                                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    智能网关层                              │    │
+│  │  ┌────────────────────────────────────────────────────┐ │    │
+│  │  │  Smart Gateway (NGINX)                             │ │    │
+│  │  │  - 设备识别                                          │ │    │
+│  │  │  - 租户ID注入 (X-Tenant-Id)                         │ │    │
+│  │  │  - 租户级速率限制                                     │ │    │
+│  │  └────────────────────────────────────────────────────┘ │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│                             ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    应用服务层                              │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐              │    │
+│  │  │ Tenant   │  │ Device   │  │ Backend  │              │    │
+│  │  │ Catalog  │  │ Registry │  │ Service  │              │    │
+│  │  │ Service  │  │ Service  │  │(medLogic)│              │    │
+│  │  └──────────┘  └──────────┘  └────┬─────┘              │    │
+│  │                                    │                     │    │
+│  │                                    ▼                     │    │
+│  │                          ┌──────────────────┐           │    │
+│  │                          │  DB Router       │           │    │
+│  │                          │  Middleware      │           │    │
+│  │                          └────────┬─────────┘           │    │
+│  └───────────────────────────────────┼─────────────────────┘    │
+│                                      │                           │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                  控制平面与安全层                           │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐              │    │
+│  │  │ Tenant   │  │Kubernetes│  │   OPA    │              │    │
+│  │  │ Operator │  │ Secrets  │  │Gatekeeper│              │    │
+│  │  │(K8s CRD) │  │          │  │ (Policy) │              │    │
+│  │  └──────────┘  └──────────┘  └──────────┘              │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                      │                           │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    可观测性层                              │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐              │    │
+│  │  │Prometheus│  │   Loki   │  │ Grafana  │              │    │
+│  │  │(Metrics) │  │  (Logs)  │  │(Dashboard│              │    │
+│  │  └──────────┘  └──────────┘  └──────────┘              │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                      │                           │
+│                                      │ host.minikube.internal    │
+└──────────────────────────────────────┼───────────────────────────┘
+                                       │
+                                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      应用服务层                                    │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Tenant       │  │ Device       │  │ Backend      │          │
-│  │ Catalog      │  │ Registry     │  │ Microservice │          │
-│  │ Service      │  │ Service      │  │ (medLogic)   │          │
-│  └──────────────┘  └──────────────┘  └──────┬───────┘          │
-│                                              │                   │
-│                                              ▼                   │
-│                                    ┌──────────────────┐          │
-│                                    │  DB Router       │          │
-│                                    │  Middleware      │          │
-│                                    └──────┬───────────┘          │
-└───────────────────────────────────────────┼──────────────────────┘
-                                            │
-                                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      数据存储层                                    │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Tenant A DB  │  │ Tenant B DB  │  │ Tenant C DB  │          │
-│  │ (Isolated)   │  │ (Isolated)   │  │ (Isolated)   │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│                    控制平面与安全层                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Tenant       │  │ Azure Key    │  │ OPA          │          │
-│  │ Operator     │  │ Vault        │  │ Gatekeeper   │          │
-│  │ (K8s CRD)    │  │ (Secrets)    │  │ (Policy)     │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│                      可观测性层                                    │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Prometheus   │  │ Loki         │  │ Grafana      │          │
-│  │ (Metrics)    │  │ (Logs)       │  │ (Dashboard)  │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│                    宿主机 (Windows/Linux/macOS)                   │
+│                                                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              MS SQL Server (本地实例)                      │    │
+│  │                                                           │    │
+│  │  ┌──────────────────┐  ┌──────────────────┐            │    │
+│  │  │ MedLogicPlatform │  │  租户数据库        │            │    │
+│  │  │   (平台数据库)    │  │                  │            │    │
+│  │  │  - Tenants       │  │ - HospitalA_DB   │            │    │
+│  │  │  - Devices       │  │ - HospitalB_DB   │            │    │
+│  │  │                  │  │ - HospitalC_DB   │            │    │
+│  │  └──────────────────┘  └──────────────────┘            │    │
+│  │                                                           │    │
+│  │  端口: 1433                                               │    │
+│  │  认证: SQL Server 认证 (用户名/密码)                       │    │
+│  │  加密: TDE (可选)                                         │    │
+│  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -117,11 +137,10 @@ public enum TenantStatus
 
 public class DatabaseConfig
 {
-    public string Mode { get; set; }          // "perDatabase" 或 "perSchema"
-    public string Server { get; set; }
-    public string Database { get; set; }
-    public string? Schema { get; set; }
-    public string CredentialRef { get; set; }  // Azure Key Vault引用
+    public string Server { get; set; }        // 本地SQL Server地址，如 "localhost,1433"
+    public string Database { get; set; }      // 租户专属数据库名称
+    public string Username { get; set; }      // SQL Server认证用户名
+    public string PasswordRef { get; set; }   // Kubernetes Secret引用
 }
 
 public class ThrottlingConfig
@@ -157,9 +176,9 @@ metadata:
 spec:
   displayName: "Hospital A"
   db:
-    mode: perDatabase
-    server: sqlserver.default.svc.cluster.local
-    database: HospitalA_DB
+    server: "host.minikube.internal,1433"  # 从Minikube访问宿主机SQL Server
+    database: HospitalA_DB                 # 租户专属数据库名称
+    username: hospital_a_user
   throttling:
     rps: 100
   slo:
@@ -169,18 +188,23 @@ status:
   phase: Provisioning | Ready | Failed
   conditions: []
   namespaceCreated: true
+  databaseCreated: true
+  secretCreated: true
   resourcesProvisioned: true
 ```
 
 **Operator职责**:
 1. 监听Tenant CRD的创建、更新、删除事件
 2. 创建租户专属命名空间（如`tenant-hospital-a`）
-3. 在命名空间内创建ConfigMap和Secret引用
+3. 在命名空间内创建ConfigMap和Kubernetes Secret（存储数据库密码）
 4. 应用ResourceQuota限制资源使用
 5. 应用NetworkPolicy实现网络隔离
 6. 配置RBAC规则
-7. 在Azure Key Vault中创建/删除租户密钥
-8. 更新Tenant CRD的status字段
+7. **连接本地SQL Server为每个租户创建独立的数据库实例**
+8. **生成数据库用户凭据并存储到Kubernetes Secret**
+9. **执行数据库初始化脚本创建表结构**
+10. **将数据库连接信息注册到Tenant Catalog Service**
+11. 更新Tenant CRD的status字段
 
 ### 3. Device Registry Service
 
@@ -281,7 +305,183 @@ http {
 }
 ```
 
-### 5. DB Router Middleware
+### 5. 数据库自动创建服务
+
+Tenant Operator 集成数据库自动创建功能，支持在租户创建时自动配置数据库。
+
+**技术栈**: Go + database/sql (使用 github.com/denisenkom/go-mssqldb 驱动)
+
+**本地SQL Server连接配置**:
+- Operator通过环境变量获取SQL Server管理员凭据
+- 使用`host.minikube.internal`从Minikube Pod访问宿主机SQL Server
+- 默认端口: 1433
+
+**数据库创建流程**:
+
+```go
+type DatabaseProvisioner struct {
+    sqlClient         *sql.DB              // 管理员连接
+    catalogClient     *TenantCatalogClient
+    k8sClient         client.Client        // Kubernetes客户端
+    sqlServerHost     string               // 如 "host.minikube.internal,1433"
+}
+
+func (p *DatabaseProvisioner) ProvisionDatabase(ctx context.Context, tenant *Tenant) error {
+    // 1. 生成数据库名称
+    dbName := fmt.Sprintf("%s_DB", sanitizeName(tenant.Spec.DisplayName))
+    
+    // 2. 生成数据库凭据
+    username := fmt.Sprintf("%s_user", tenant.Name)
+    password := generateSecurePassword()
+    
+    // 3. 在本地SQL Server上创建数据库
+    _, err := p.sqlClient.Exec(fmt.Sprintf(`
+        CREATE DATABASE [%s]
+        COLLATE SQL_Latin1_General_CP1_CI_AS
+    `, dbName))
+    if err != nil {
+        return fmt.Errorf("failed to create database: %w", err)
+    }
+    
+    // 4. 启用TDE加密（可选，需要预先配置服务器证书）
+    _, err = p.sqlClient.Exec(fmt.Sprintf(`
+        USE [%s];
+        CREATE DATABASE ENCRYPTION KEY
+        WITH ALGORITHM = AES_256
+        ENCRYPTION BY SERVER CERTIFICATE TDE_Cert;
+        ALTER DATABASE [%s] SET ENCRYPTION ON;
+    `, dbName, dbName))
+    if err != nil {
+        // TDE失败不阻塞流程，记录警告
+        log.Warnf("failed to enable TDE for %s: %v", dbName, err)
+    }
+    
+    // 5. 创建数据库用户
+    _, err = p.sqlClient.Exec(fmt.Sprintf(`
+        USE master;
+        CREATE LOGIN [%s] WITH PASSWORD = '%s';
+        USE [%s];
+        CREATE USER [%s] FOR LOGIN [%s];
+        ALTER ROLE db_owner ADD MEMBER [%s];
+    `, username, password, dbName, username, username, username))
+    if err != nil {
+        return fmt.Errorf("failed to create user: %w", err)
+    }
+    
+    // 6. 执行初始化脚本（创建表结构）
+    initScript, err := loadInitScript(tenant.Spec.DbInitScriptPath)
+    if err != nil {
+        return fmt.Errorf("failed to load init script: %w", err)
+    }
+    
+    _, err = p.sqlClient.Exec(fmt.Sprintf("USE [%s]; %s", dbName, initScript))
+    if err != nil {
+        return fmt.Errorf("failed to execute init script: %w", err)
+    }
+    
+    // 7. 将凭据存储到Kubernetes Secret
+    secretName := fmt.Sprintf("tenant-%s-db-secret", tenant.Name)
+    secret := &corev1.Secret{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      secretName,
+            Namespace: fmt.Sprintf("tenant-%s", tenant.Name),
+        },
+        StringData: map[string]string{
+            "username": username,
+            "password": password,
+            "server":   p.sqlServerHost,
+            "database": dbName,
+        },
+        Type: corev1.SecretTypeOpaque,
+    }
+    
+    err = p.k8sClient.Create(ctx, secret)
+    if err != nil {
+        return fmt.Errorf("failed to create secret: %w", err)
+    }
+    
+    // 8. 将数据库配置注册到Tenant Catalog
+    dbConfig := DatabaseConfig{
+        Server:      p.sqlServerHost,
+        Database:    dbName,
+        Username:    username,
+        PasswordRef: secretName,
+    }
+    
+    err = p.catalogClient.UpdateTenantDbConfig(tenant.Name, dbConfig)
+    if err != nil {
+        return fmt.Errorf("failed to register db config: %w", err)
+    }
+    
+    return nil
+}
+
+// generateSecurePassword 生成强密码
+func generateSecurePassword() string {
+    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
+    const length = 32
+    b := make([]byte, length)
+    for i := range b {
+        b[i] = charset[rand.Intn(len(charset))]
+    }
+    return string(b)
+}
+
+// sanitizeName 清理名称用于数据库对象
+func sanitizeName(name string) string {
+    // 移除特殊字符，只保留字母数字和下划线
+    reg := regexp.MustCompile("[^a-zA-Z0-9_]+")
+    return reg.ReplaceAllString(name, "_")
+}
+```
+
+**初始化脚本示例**:
+```sql
+-- init-tenant-db.sql
+CREATE TABLE Transactions (
+    Id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    Amount DECIMAL(18,2) NOT NULL,
+    Description NVARCHAR(500),
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+CREATE TABLE AuditLogs (
+    Id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    Action NVARCHAR(100) NOT NULL,
+    UserId NVARCHAR(100),
+    Timestamp DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    Details NVARCHAR(MAX)
+);
+
+CREATE INDEX IX_Transactions_CreatedAt ON Transactions(CreatedAt);
+CREATE INDEX IX_AuditLogs_Timestamp ON AuditLogs(Timestamp);
+```
+
+**环境变量配置**:
+Tenant Operator需要以下环境变量连接本地SQL Server：
+```yaml
+env:
+  - name: SQL_SERVER_HOST
+    value: "host.minikube.internal,1433"
+  - name: SQL_SERVER_ADMIN_USER
+    valueFrom:
+      secretKeyRef:
+        name: sqlserver-admin-secret
+        key: username
+  - name: SQL_SERVER_ADMIN_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: sqlserver-admin-secret
+        key: password
+```
+
+**错误处理**:
+- 如果数据库创建失败，Operator 应回滚已创建的资源（删除部分创建的数据库、清理Secret）
+- 更新 Tenant CRD 的 status.phase 为 "Failed"
+- 在 status.conditions 中记录详细错误信息
+- 支持手动重试机制（管理员可以修复问题后更新 CRD 触发重新协调）
+
+### 6. DB Router Middleware
 
 嵌入在后端微服务中的数据库路由中间件。
 
@@ -293,6 +493,7 @@ public class TenantDBRouter
 {
     private readonly ConcurrentDictionary<string, SqlConnection> _pools;
     private readonly ITenantCatalogClient _tenantCatalogClient;
+    private readonly IConfiguration _configuration;
     
     public async Task<SqlConnection> GetTenantConnectionAsync(string tenantId)
     {
@@ -305,13 +506,38 @@ public class TenantDBRouter
         // 从Tenant Catalog获取数据库配置
         var dbConfig = await _tenantCatalogClient.GetDbConfigAsync(tenantId);
         
+        // 从Kubernetes Secret或环境变量获取密码
+        var password = await GetPasswordFromSecret(dbConfig.PasswordRef);
+        
         // 创建新连接
-        var connectionString = BuildConnectionString(dbConfig);
+        var connectionString = BuildConnectionString(dbConfig, password);
         var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         
         _pools.TryAdd(tenantId, connection);
         return connection;
+    }
+    
+    private string BuildConnectionString(DatabaseConfig config, string password)
+    {
+        return $"Server={config.Server};Database={config.Database};" +
+               $"User Id={config.Username};Password={password};" +
+               $"TrustServerCertificate=True;Encrypt=True;";
+    }
+    
+    private async Task<string> GetPasswordFromSecret(string secretRef)
+    {
+        // 从挂载的Secret文件读取密码
+        var secretPath = $"/var/secrets/{secretRef}/password";
+        if (File.Exists(secretPath))
+        {
+            return await File.ReadAllTextAsync(secretPath);
+        }
+        
+        // 或从环境变量读取
+        var envVar = $"DB_PASSWORD_{secretRef.ToUpper().Replace("-", "_")}";
+        return Environment.GetEnvironmentVariable(envVar) 
+            ?? throw new InvalidOperationException($"Password not found for {secretRef}");
     }
     
     public async Task<T> ExecuteQueryAsync<T>(string tenantId, string query, object parameters)
@@ -325,6 +551,14 @@ public class TenantDBRouter
 
 **使用示例**:
 ```csharp
+// 在Program.cs中注册服务
+builder.Services.AddSingleton<TenantDBRouter>();
+builder.Services.AddHttpClient<ITenantCatalogClient, TenantCatalogClient>(client =>
+{
+    // 在Kubernetes内部访问Tenant Catalog Service
+    client.BaseAddress = new Uri("http://tenant-catalog.platform-system.svc.cluster.local:8080");
+});
+
 // 在ASP.NET Core中间件中提取tenantId
 app.Use(async (context, next) =>
 {
@@ -345,19 +579,55 @@ app.Use(async (context, next) =>
 public class TransactionsController : ControllerBase
 {
     private readonly TenantDBRouter _dbRouter;
+    private readonly ILogger<TransactionsController> _logger;
+    
+    public TransactionsController(TenantDBRouter dbRouter, ILogger<TransactionsController> logger)
+    {
+        _dbRouter = dbRouter;
+        _logger = logger;
+    }
     
     [HttpPost]
     public async Task<IActionResult> CreateTransaction([FromBody] TransactionRequest request)
     {
         var tenantId = HttpContext.Items["TenantId"] as string;
         
-        var result = await _dbRouter.ExecuteQueryAsync<Transaction>(
+        _logger.LogInformation("Creating transaction for tenant {TenantId}", tenantId);
+        
+        try
+        {
+            var result = await _dbRouter.ExecuteQueryAsync<Transaction>(
+                tenantId,
+                "INSERT INTO Transactions (Amount, Description) OUTPUT INSERTED.* VALUES (@Amount, @Description)",
+                new { request.Amount, request.Description }
+            );
+            
+            return CreatedAtAction(nameof(GetTransaction), new { id = result.Id }, result);
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Database error for tenant {TenantId}", tenantId);
+            return StatusCode(500, new { error = "Database operation failed" });
+        }
+    }
+    
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetTransaction(long id)
+    {
+        var tenantId = HttpContext.Items["TenantId"] as string;
+        
+        var transaction = await _dbRouter.ExecuteQueryAsync<Transaction>(
             tenantId,
-            "INSERT INTO Transactions (Amount, Description) OUTPUT INSERTED.* VALUES (@Amount, @Description)",
-            new { request.Amount, request.Description }
+            "SELECT * FROM Transactions WHERE Id = @Id",
+            new { Id = id }
         );
         
-        return CreatedAtAction(nameof(GetTransaction), new { id = result.Id }, result);
+        if (transaction == null)
+        {
+            return NotFound();
+        }
+        
+        return Ok(transaction);
     }
 }
 ```
@@ -368,15 +638,18 @@ public class TransactionsController : ControllerBase
 
 **Tenants表**:
 ```sql
+-- 在MedLogicPlatform数据库中创建
+USE MedLogicPlatform;
+GO
+
 CREATE TABLE Tenants (
     Id NVARCHAR(50) PRIMARY KEY,
     DisplayName NVARCHAR(200) NOT NULL,
     Status NVARCHAR(50) NOT NULL,
-    DbMode NVARCHAR(20) NOT NULL,
-    DbServer NVARCHAR(200) NOT NULL,
-    DbDatabase NVARCHAR(100) NOT NULL,
-    DbSchema NVARCHAR(100),
-    DbCredentialRef NVARCHAR(200) NOT NULL,
+    DbServer NVARCHAR(200) NOT NULL,      -- 如 "host.minikube.internal,1433"
+    DbDatabase NVARCHAR(100) NOT NULL,    -- 租户专属数据库名称
+    DbUsername NVARCHAR(100) NOT NULL,
+    DbPasswordRef NVARCHAR(200) NOT NULL, -- Kubernetes Secret名称
     ThrottlingRps INT NOT NULL DEFAULT 100,
     SloAvailability NVARCHAR(20),
     SloP95LatencyMs INT,
@@ -385,12 +658,17 @@ CREATE TABLE Tenants (
 );
 
 CREATE INDEX IX_Tenants_Status ON Tenants(Status);
+GO
 ```
 
 ### Device Registry数据库
 
 **Devices表**:
 ```sql
+-- 在MedLogicPlatform数据库中创建
+USE MedLogicPlatform;
+GO
+
 CREATE TABLE Devices (
     SerialNumber NVARCHAR(100) PRIMARY KEY,
     TenantId NVARCHAR(50) NOT NULL,
@@ -401,6 +679,7 @@ CREATE TABLE Devices (
 );
 
 CREATE INDEX IX_Devices_TenantId ON Devices(TenantId);
+GO
 ```
 
 ### 租户数据库（示例）
@@ -465,6 +744,22 @@ CREATE TABLE Transactions (
 **属性 10: 命名空间配置RBAC**
 *对于任何*由Tenant Operator创建的命名空间，该命名空间应该有RoleBinding对象限制访问权限。
 **验证需求: 2.5**
+
+**属性 10.1: Database-per-Tenant模式自动创建数据库**
+*对于任何*配置为Database-per-Tenant模式的Tenant CRD，Tenant Operator应该自动在SQL Server上创建该租户的专属数据库实例。
+**验证需求: 2.6**
+
+**属性 10.2: 数据库初始化脚本执行**
+*对于任何*新创建的租户数据库，Tenant Operator应该执行初始化脚本创建必需的表结构。
+**验证需求: 2.7**
+
+**属性 10.3: 数据库创建失败状态更新**
+*对于任何*数据库创建失败的租户，Tenant CRD的status.phase应该被更新为"Failed"，并在status.conditions中包含错误详情。
+**验证需求: 2.8**
+
+**属性 10.4: 数据库配置注册到Catalog**
+*对于任何*成功创建数据库的租户，数据库连接信息应该被注册到Tenant Catalog Service。
+**验证需求: 2.9**
 
 ### 设备注册与映射属性
 
@@ -554,27 +849,19 @@ CREATE TABLE Transactions (
 *对于任何*请求上下文中缺少租户ID的情况，DB Router应该抛出错误并拒绝执行数据库操作。
 **验证需求: 6.5**
 
-### 数据库隔离策略属性
+### 数据库隔离属性
 
-**属性 31: Database-per-Tenant模式连接专属数据库**
-*对于任何*配置为Database-per-Tenant模式的租户，DB Router应该连接到该租户的专属数据库实例。
+**属性 31: 每个租户连接专属数据库**
+*对于任何*租户，DB Router应该连接到该租户的专属数据库实例。
 **验证需求: 7.1**
 
-**属性 32: Schema-per-Tenant模式使用租户模式**
-*对于任何*配置为Schema-per-Tenant模式的租户，DB Router应该连接到共享数据库并使用租户特定的schema。
+**属性 32: 租户连接池独立**
+*对于任何*两个不同的租户，它们的数据库连接池对象应该完全独立。
 **验证需求: 7.2**
 
-**属性 33: Operator根据模式创建资源**
-*对于任何*在Tenant CRD中指定数据库模式的租户，Tenant Operator应该根据该模式创建相应的数据库资源。
+**属性 33: Operator自动创建租户数据库**
+*对于任何*新创建的租户，Tenant Operator应该自动在SQL Server上创建该租户的专属数据库实例。
 **验证需求: 7.3**
-
-**属性 34: Database-per-Tenant连接池独立**
-*对于任何*两个使用Database-per-Tenant模式的租户，它们的连接池对象应该完全独立。
-**验证需求: 7.4**
-
-**属性 35: Schema-per-Tenant自动添加前缀**
-*对于任何*使用Schema-per-Tenant模式的租户，DB Router生成的SQL查询应该自动包含该租户的schema前缀。
-**验证需求: 7.5**
 
 ### 网络隔离属性
 
@@ -600,24 +887,24 @@ CREATE TABLE Transactions (
 
 ### 密钥管理属性
 
-**属性 41: 租户创建时创建密钥**
-*对于任何*新创建的租户，Tenant Operator应该在Azure Key Vault中创建该租户的数据库凭据密钥。
+**属性 41: 租户创建时创建Secret**
+*对于任何*新创建的租户，Tenant Operator应该在Kubernetes中创建包含该租户数据库凭据的Secret。
 **验证需求: 9.1**
 
-**属性 42: Pod启动时挂载密钥**
-*对于任何*微服务Pod启动，Secrets Store CSI Driver应该将租户的密钥从Azure Key Vault挂载为Pod内的文件。
+**属性 42: Pod启动时挂载Secret**
+*对于任何*微服务Pod启动，Kubernetes应该将租户的Secret挂载为Pod内的环境变量或文件。
 **验证需求: 9.2**
 
-**属性 43: 密钥轮换自动更新**
-*对于任何*在Azure Key Vault中被轮换的密钥，Secrets Store CSI Driver应该自动更新Pod内挂载的密钥文件。
+**属性 43: Secret更新后Pod重启**
+*对于任何*被更新的Secret，相关的Pod应该能够通过重启或配置重载获取新的凭据。
 **验证需求: 9.3**
 
-**属性 44: 使用Workload Identity访问**
-*对于任何*微服务访问数据库的操作，应该使用AKS Workload Identity进行无凭据身份验证。
+**属性 44: 使用SQL Server认证访问**
+*对于任何*微服务访问数据库的操作，应该使用存储在Secret中的SQL Server用户名和密码进行身份验证。
 **验证需求: 9.4**
 
-**属性 45: 租户删除时删除密钥**
-*对于任何*被删除的租户，Tenant Operator应该吊销并删除该租户在Azure Key Vault中的所有密钥。
+**属性 45: 租户删除时删除Secret**
+*对于任何*被删除的租户，Tenant Operator应该删除该租户在Kubernetes中的所有Secret。
 **验证需求: 9.5**
 
 ### 数据加密属性
@@ -689,15 +976,15 @@ CREATE TABLE Transactions (
 **验证需求: 13.1**
 
 **属性 61: 退服首先创建备份**
-*对于任何*开始退服流程的租户，Tenant Operator应该首先创建租户数据库的完整备份。
+*对于任何*开始退服流程的租户，Tenant Operator应该首先创建租户数据库的完整备份到本地文件系统。
 **验证需求: 13.2**
 
-**属性 62: 备份后吊销密钥**
-*对于任何*完成数据备份的退服租户，Tenant Operator应该吊销该租户在Azure Key Vault中的所有密钥。
+**属性 62: 备份后删除Secret**
+*对于任何*完成数据备份的退服租户，Tenant Operator应该删除该租户在Kubernetes中的所有Secret。
 **验证需求: 13.3**
 
-**属性 63: 密钥吊销后删除命名空间**
-*对于任何*密钥被吊销的退服租户，Tenant Operator应该删除租户的Kubernetes命名空间及其所有资源。
+**属性 63: Secret删除后删除命名空间**
+*对于任何*Secret被删除的退服租户，Tenant Operator应该删除租户的Kubernetes命名空间及其所有资源。
 **验证需求: 13.4**
 
 **属性 64: 退服保留审计日志**
@@ -860,44 +1147,388 @@ public Property TenantCreationReturnsUniqueIds()
 
 ## 部署架构
 
-### Kubernetes资源组织
+### 本地环境架构
 
 ```
-Cluster
-├── Namespace: platform-system
-│   ├── Deployment: tenant-catalog-service
-│   ├── Deployment: device-registry-service
-│   ├── Deployment: tenant-operator
-│   ├── Service: tenant-catalog
-│   └── Service: device-registry
-├── Namespace: gateway
-│   ├── Deployment: smart-gateway (NGINX)
-│   └── Service: smart-gateway (LoadBalancer)
-├── Namespace: tenant-hospital-a
-│   ├── Deployment: medlogic-service
-│   ├── ConfigMap: tenant-config
-│   ├── ResourceQuota: tenant-quota
-│   └── NetworkPolicy: tenant-isolation
-├── Namespace: tenant-hospital-b
-│   └── ...
-└── Namespace: observability
-    ├── Deployment: prometheus
-    ├── Deployment: loki
-    └── Deployment: grafana
+宿主机 (Windows/Linux/macOS)
+├── MS SQL Server (独立安装)
+│   ├── 端口: 1433
+│   ├── 认证: SQL Server认证
+│   └── 租户数据库: HospitalA_DB, HospitalB_DB, ...
+│
+└── Minikube Cluster
+    ├── Namespace: platform-system
+    │   ├── Deployment: tenant-catalog-service
+    │   ├── Deployment: device-registry-service
+    │   ├── Deployment: tenant-operator
+    │   ├── Service: tenant-catalog
+    │   ├── Service: device-registry
+    │   └── Secret: sqlserver-admin-secret (SQL Server管理员凭据)
+    │
+    ├── Namespace: gateway
+    │   ├── Deployment: smart-gateway (NGINX)
+    │   └── Service: smart-gateway (NodePort/LoadBalancer)
+    │
+    ├── Namespace: tenant-hospital-a
+    │   ├── Deployment: medlogic-service
+    │   ├── ConfigMap: tenant-config
+    │   ├── Secret: tenant-hospital-a-db-secret (数据库凭据)
+    │   ├── ResourceQuota: tenant-quota
+    │   └── NetworkPolicy: tenant-isolation
+    │
+    ├── Namespace: tenant-hospital-b
+    │   └── ...
+    │
+    └── Namespace: observability
+        ├── Deployment: prometheus
+        ├── Deployment: loki
+        └── Deployment: grafana
 ```
 
-### 高可用性配置
+### Minikube配置要求
 
-- **多副本部署**: 所有关键服务至少3个副本
-- **Pod反亲和性**: 确保副本分布在不同节点
-- **健康检查**: 配置liveness和readiness探针
-- **自动扩缩容**: 基于CPU/内存使用率的HPA
+**最低配置**:
+```bash
+minikube start \
+  --cpus=4 \
+  --memory=8192 \
+  --disk-size=50g \
+  --driver=docker \
+  --kubernetes-version=v1.28.0
+```
 
-### 灾难恢复
+**启用必需插件**:
+```bash
+minikube addons enable ingress
+minikube addons enable metrics-server
+minikube addons enable storage-provisioner
+```
 
-- **数据库备份**: 每日自动备份所有租户数据库
-- **配置备份**: 定期备份Kubernetes资源定义
-- **恢复演练**: 季度进行灾难恢复演练
+**网络配置**:
+- Minikube Pod通过`host.minikube.internal`访问宿主机SQL Server
+- 确保宿主机防火墙允许端口1433的入站连接
+- 对于Docker驱动，Minikube自动配置host.minikube.internal
+
+### SQL Server配置要求
+
+**安装方式**:
+- Windows: SQL Server Express/Developer Edition
+- Linux/macOS: SQL Server Docker容器或原生安装
+
+**必需配置**:
+```sql
+-- 启用SQL Server认证
+USE master;
+GO
+ALTER LOGIN sa ENABLE;
+ALTER LOGIN sa WITH PASSWORD = 'YourStrongPassword123!';
+GO
+
+-- 启用TCP/IP协议（通过SQL Server Configuration Manager或命令行）
+-- 确保监听端口1433
+
+-- 创建TDE证书（可选，用于透明数据加密）
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = 'MasterKeyPassword123!';
+GO
+CREATE CERTIFICATE TDE_Cert WITH SUBJECT = 'TDE Certificate';
+GO
+```
+
+**防火墙配置**:
+```bash
+# Windows
+netsh advfirewall firewall add rule name="SQL Server" dir=in action=allow protocol=TCP localport=1433
+
+# Linux (firewalld)
+firewall-cmd --permanent --add-port=1433/tcp
+firewall-cmd --reload
+
+# Linux (ufw)
+ufw allow 1433/tcp
+```
+
+### 本地开发配置
+
+**简化部署（单副本）**:
+- 所有服务运行1个副本以节省资源
+- 使用NodePort暴露服务便于本地访问
+- 禁用Pod反亲和性规则
+
+**健康检查**: 
+- 配置liveness和readiness探针
+- 探针超时时间适当放宽以适应本地环境
+
+### 数据持久化
+
+**数据库备份策略**:
+- 使用SQL Server Agent或cron作业定期备份
+- 备份文件存储在宿主机本地目录
+- 备份脚本示例:
+```bash
+#!/bin/bash
+BACKUP_DIR="/var/backups/medlogic"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+for DB in $(sqlcmd -S localhost -U sa -P 'Password' -Q "SELECT name FROM sys.databases WHERE name LIKE '%_DB'" -h -1)
+do
+    sqlcmd -S localhost -U sa -P 'Password' -Q "BACKUP DATABASE [$DB] TO DISK = '$BACKUP_DIR/${DB}_${DATE}.bak'"
+done
+```
+
+**Kubernetes配置备份**:
+```bash
+# 导出所有Tenant CRD
+kubectl get tenants -A -o yaml > tenants-backup.yaml
+
+# 导出所有命名空间配置
+kubectl get all,configmap,secret -n tenant-hospital-a -o yaml > hospital-a-backup.yaml
+```
+
+## 本地环境部署指南
+
+### 前置条件
+
+**宿主机要求**:
+- 操作系统: Windows 10/11, macOS 10.15+, 或 Linux (Ubuntu 20.04+)
+- CPU: 4核心或以上
+- 内存: 16GB或以上（推荐）
+- 磁盘: 50GB可用空间
+
+**必需软件**:
+1. Docker Desktop (Windows/macOS) 或 Docker Engine (Linux)
+2. Minikube
+3. kubectl
+4. MS SQL Server 2019或更高版本
+
+### 步骤1: 安装和配置SQL Server
+
+**Windows**:
+```powershell
+# 下载并安装SQL Server Express
+# https://www.microsoft.com/sql-server/sql-server-downloads
+
+# 启用SQL Server认证
+sqlcmd -S localhost -E -Q "ALTER LOGIN sa ENABLE; ALTER LOGIN sa WITH PASSWORD = 'YourStrongPassword123!';"
+
+# 启用TCP/IP（通过SQL Server Configuration Manager）
+```
+
+**Linux (Docker)**:
+```bash
+# 运行SQL Server容器
+docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourStrongPassword123!" \
+  -p 1433:1433 --name sqlserver \
+  -d mcr.microsoft.com/mssql/server:2019-latest
+
+# 验证连接
+docker exec -it sqlserver /opt/mssql-tools/bin/sqlcmd \
+  -S localhost -U sa -P "YourStrongPassword123!" \
+  -Q "SELECT @@VERSION"
+```
+
+**macOS (Docker)**:
+```bash
+# 同Linux步骤
+docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourStrongPassword123!" \
+  -p 1433:1433 --name sqlserver \
+  -d mcr.microsoft.com/mssql/server:2019-latest
+```
+
+### 步骤2: 配置SQL Server
+
+```sql
+-- 连接到SQL Server
+-- sqlcmd -S localhost -U sa -P "YourStrongPassword123!"
+
+-- 创建TDE主密钥和证书
+USE master;
+GO
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = 'MasterKeyPassword123!';
+GO
+CREATE CERTIFICATE TDE_Cert WITH SUBJECT = 'TDE Certificate';
+GO
+
+-- 创建平台数据库（用于Tenant Catalog和Device Registry）
+CREATE DATABASE MedLogicPlatform;
+GO
+
+-- 验证配置
+SELECT name, is_encrypted FROM sys.databases;
+GO
+```
+
+### 步骤3: 启动Minikube
+
+```bash
+# 启动Minikube集群
+minikube start \
+  --cpus=4 \
+  --memory=8192 \
+  --disk-size=50g \
+  --driver=docker \
+  --kubernetes-version=v1.28.0
+
+# 启用必需插件
+minikube addons enable ingress
+minikube addons enable metrics-server
+
+# 验证集群状态
+kubectl cluster-info
+kubectl get nodes
+```
+
+### 步骤4: 创建SQL Server管理员Secret
+
+```bash
+# 创建platform-system命名空间
+kubectl create namespace platform-system
+
+# 创建SQL Server管理员凭据Secret
+kubectl create secret generic sqlserver-admin-secret \
+  --from-literal=username=sa \
+  --from-literal=password=YourStrongPassword123! \
+  --from-literal=server=host.minikube.internal,1433 \
+  -n platform-system
+```
+
+### 步骤5: 部署Tenant Operator
+
+```bash
+# 安装Tenant CRD
+kubectl apply -f tenant-operator/config/crd/tenants.medlogic.io_tenants.yaml
+
+# 部署Operator
+kubectl apply -f tenant-operator/config/manager/deployment.yaml
+kubectl apply -f tenant-operator/config/rbac/role.yaml
+
+# 验证Operator运行
+kubectl get pods -n platform-system -l app=tenant-operator
+kubectl logs -n platform-system -l app=tenant-operator
+```
+
+### 步骤6: 部署平台服务
+
+```bash
+# 构建服务镜像（在项目根目录）
+eval $(minikube docker-env)  # 使用Minikube的Docker守护进程
+
+docker build -f src/TenantCatalogService/Dockerfile -t medlogic/tenant-catalog:latest .
+docker build -f src/DeviceRegistryService/Dockerfile -t medlogic/device-registry:latest .
+docker build -f nginx/Dockerfile -t medlogic/smart-gateway:latest .
+
+# 部署服务
+kubectl apply -f k8s/local/namespace.yaml
+kubectl apply -f k8s/local/tenant-catalog-deployment.yaml
+kubectl apply -f k8s/local/device-registry-deployment.yaml
+kubectl apply -f k8s/local/smart-gateway-deployment.yaml
+
+# 验证部署
+kubectl get pods -n platform-system
+kubectl get svc -n platform-system
+```
+
+### 步骤7: 创建测试租户
+
+```bash
+# 创建Tenant CRD实例
+cat <<EOF | kubectl apply -f -
+apiVersion: tenants.medlogic.io/v1
+kind: Tenant
+metadata:
+  name: hospital-a
+spec:
+  displayName: "Hospital A"
+  db:
+    mode: perDatabase
+    server: "host.minikube.internal,1433"
+    database: HospitalA_DB
+    username: hospital_a_user
+  throttling:
+    rps: 100
+  slo:
+    availability: "99.9%"
+    p95_latency_ms: 1000
+EOF
+
+# 监控租户创建进度
+kubectl get tenant hospital-a -o yaml
+kubectl get namespace tenant-hospital-a
+kubectl get secret -n tenant-hospital-a
+```
+
+### 步骤8: 验证系统
+
+```bash
+# 获取Smart Gateway访问地址
+minikube service smart-gateway -n gateway --url
+
+# 测试Tenant Catalog API
+GATEWAY_URL=$(minikube service smart-gateway -n gateway --url)
+curl $GATEWAY_URL/api/tenants
+
+# 测试Device Registry API
+curl $GATEWAY_URL/api/devices
+
+# 查看数据库
+sqlcmd -S localhost -U sa -P "YourStrongPassword123!" \
+  -Q "SELECT name FROM sys.databases WHERE name LIKE '%_DB'"
+```
+
+### 步骤9: 部署可观测性栈（可选）
+
+```bash
+# 部署Prometheus
+kubectl apply -f k8s/local/prometheus-deployment.yaml
+
+# 部署Grafana
+kubectl apply -f k8s/local/grafana-deployment.yaml
+
+# 访问Grafana
+minikube service grafana -n observability
+```
+
+### 故障排查
+
+**问题1: Pod无法连接SQL Server**
+```bash
+# 检查host.minikube.internal解析
+kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup host.minikube.internal
+
+# 检查SQL Server端口
+kubectl run -it --rm debug --image=busybox --restart=Never -- telnet host.minikube.internal 1433
+
+# 检查防火墙规则
+# Windows: netsh advfirewall firewall show rule name="SQL Server"
+# Linux: sudo ufw status
+```
+
+**问题2: Tenant Operator无法创建数据库**
+```bash
+# 查看Operator日志
+kubectl logs -n platform-system -l app=tenant-operator --tail=100
+
+# 验证SQL Server凭据
+kubectl get secret sqlserver-admin-secret -n platform-system -o yaml
+
+# 手动测试连接
+kubectl run -it --rm sqltest --image=mcr.microsoft.com/mssql-tools --restart=Never -- \
+  /opt/mssql-tools/bin/sqlcmd -S host.minikube.internal -U sa -P "YourStrongPassword123!" -Q "SELECT @@VERSION"
+```
+
+**问题3: 镜像拉取失败**
+```bash
+# 确保使用Minikube的Docker守护进程
+eval $(minikube docker-env)
+
+# 重新构建镜像
+docker build -f src/TenantCatalogService/Dockerfile -t medlogic/tenant-catalog:latest .
+
+# 检查镜像
+docker images | grep medlogic
+
+# 修改Deployment使用imagePullPolicy: Never
+kubectl patch deployment tenant-catalog -n platform-system -p '{"spec":{"template":{"spec":{"containers":[{"name":"tenant-catalog","imagePullPolicy":"Never"}]}}}}'
+```
 
 ## 监控与告警
 
@@ -931,9 +1562,10 @@ Cluster
 ### 威胁模型
 
 1. **跨租户数据泄露**: 通过网络隔离、数据库隔离、访问控制防护
-2. **凭据泄露**: 通过Key Vault、Workload Identity消除明文凭据
+2. **凭据泄露**: 通过Kubernetes Secret、RBAC消除明文凭据
 3. **拒绝服务攻击**: 通过速率限制、资源配额防护
 4. **未授权访问**: 通过设备注册、身份验证、RBAC防护
+5. **本地环境风险**: 宿主机安全、SQL Server访问控制、网络隔离
 
 ### 合规要求
 
@@ -943,34 +1575,88 @@ Cluster
 
 ### 安全最佳实践
 
+**Kubernetes层面**:
 - 最小权限原则：所有服务账号仅授予必需权限
-- 定期密钥轮换：每90天轮换数据库凭据
-- 安全扫描：定期扫描容器镜像和依赖漏洞
+- Secret加密：启用Kubernetes Secret at-rest加密
+- RBAC严格控制：限制对Secret和CRD的访问
 - 网络分段：使用NetworkPolicy严格限制流量
+
+**数据库层面**:
+- SQL Server认证：使用强密码策略
+- 定期密钥轮换：每90天轮换数据库凭据
+- TDE加密：启用透明数据加密保护数据文件
+- 审计日志：启用SQL Server审计跟踪所有访问
+
+**本地环境安全**:
+- 宿主机防火墙：仅允许必要端口访问
+- SQL Server网络隔离：仅监听localhost或内网IP
+- 定期更新：保持SQL Server和Minikube版本最新
+- 安全扫描：定期扫描容器镜像和依赖漏洞
 
 ## 可扩展性考虑
 
-### 水平扩展
+### 本地环境限制
 
-- **无状态服务**: Tenant Catalog、Device Registry、Smart Gateway均为无状态，可水平扩展
-- **数据库分片**: 支持Database-per-Tenant模式天然支持分片
-- **缓存层**: 可引入Redis缓存租户配置和设备映射
+**当前架构限制**:
+- Minikube单节点集群，无法实现真正的高可用
+- 宿主机资源限制（CPU、内存、磁盘）
+- SQL Server单实例，无法水平扩展
 
-### 垂直扩展
+**适用场景**:
+- 开发和测试环境
+- 概念验证（PoC）
+- 小规模部署（<10个租户）
+- 培训和演示
 
-- **资源配额调整**: 可根据租户需求动态调整ResourceQuota
-- **数据库升级**: 支持为高负载租户升级到更大的数据库实例
+### 水平扩展（本地环境）
+
+- **无状态服务**: Tenant Catalog、Device Registry、Smart Gateway可在Minikube内增加副本数
+- **数据库分片**: Database-per-Tenant模式天然支持分片，但受限于单SQL Server实例
+- **缓存层**: 可在Minikube内部署Redis缓存租户配置和设备映射
+
+### 垂直扩展（本地环境）
+
+- **Minikube资源调整**: 可通过`minikube config`增加CPU和内存分配
+- **SQL Server资源**: 调整SQL Server内存和CPU配置
+- **资源配额调整**: 可根据租户需求动态调整Kubernetes ResourceQuota
 
 ### 性能优化
 
 - **连接池优化**: DB Router维护租户级连接池，避免频繁建立连接
 - **配置缓存**: 缓存租户配置减少对Tenant Catalog的查询
 - **异步处理**: Tenant Operator使用工作队列异步处理CRD事件
+- **本地网络优化**: 使用host.minikube.internal减少网络跳转
+
+## 生产环境迁移路径
+
+当需要从本地环境迁移到生产环境时，可以考虑以下升级路径：
+
+### 短期升级（保持架构）
+
+1. **多节点Kubernetes集群**: 从Minikube迁移到kubeadm或托管Kubernetes（如AKS、EKS、GKE）
+2. **SQL Server高可用**: 配置Always On可用性组或故障转移集群
+3. **负载均衡**: 使用云负载均衡器替代NodePort
+4. **持久化存储**: 使用云存储（Azure Disk、EBS）替代本地磁盘
+
+### 长期升级（云原生）
+
+1. **托管数据库**: 迁移到Azure SQL Database或AWS RDS
+2. **托管密钥管理**: 集成Azure Key Vault或AWS Secrets Manager
+3. **托管身份**: 使用Workload Identity或IRSA
+4. **多区域部署**: 支持跨区域的租户部署
+5. **自动扩缩容**: 基于租户负载自动调整资源
+
+### 混合部署
+
+- 核心服务运行在云端Kubernetes集群
+- 数据库保持本地部署（满足数据主权要求）
+- 通过VPN或专线连接云端和本地
 
 ## 未来增强
 
-1. **多区域部署**: 支持跨Azure区域的租户部署
-2. **自动扩缩容**: 基于租户负载自动调整资源
+1. **多节点Kubernetes支持**: 从Minikube迁移到生产级Kubernetes集群
+2. **数据库高可用**: SQL Server Always On或读写分离
 3. **高级路由**: 支持基于地理位置、服务等级的智能路由
 4. **AI驱动的异常检测**: 使用机器学习检测异常租户行为
 5. **自助服务门户**: 租户可自助管理设备、查看监控、下载报告
+6. **云原生迁移**: 逐步迁移到托管服务（Azure SQL、Key Vault等）

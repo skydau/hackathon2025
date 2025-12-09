@@ -22,6 +22,8 @@ try
 
     // Add services to the container
     builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen();
 
     // Add DbContext
     builder.Services.AddDbContext<TenantCatalogDbContext>(options =>
@@ -50,6 +52,11 @@ try
 
     // Configure the HTTP request pipeline
     app.UseSerilogRequestLogging();
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+    }
 
     app.MapControllers();
     
