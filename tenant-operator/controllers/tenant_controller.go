@@ -19,14 +19,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tenantsv1 "github.com/touchpoint-medical/tenant-operator/api/v1"
+	"github.com/touchpoint-medical/tenant-operator/pkg/database"
 	"github.com/touchpoint-medical/tenant-operator/pkg/keyvault"
 )
 
 // TenantReconciler reconciles a Tenant object
 type TenantReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	KeyVaultClient keyvault.Client
+	Scheme              *runtime.Scheme
+	KeyVaultClient      keyvault.Client
+	DatabaseProvisioner database.Provisioner
 }
 
 // +kubebuilder:rbac:groups=tenants.medlogic.io,resources=tenants,verbs=get;list;watch;create;update;patch;delete
@@ -123,6 +125,45 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.reconcileKeyVaultSecrets(ctx, tenant); err != nil {
 		logger.Error(err, "Failed to reconcile Key Vault secrets")
 		return ctrl.Result{}, err
+	}
+
+	// Provision database if DatabaseProvisioner is configured and database not yet created
+	if r.DatabaseProvisioner != nil && !tenant.Status.DatabaseCreated {
+		logger.Info("Provisioning database for tenant", "tenant", tenant.Name)
+		if err := r.DatabaseProvisioner.ProvisionDatabase(ctx, tenant); err != nil {
+			logger.Error(err, "Failed to provision database")
+			// Update status to Failed
+			tenant.Status.Phase = "Failed"
+			condition := metav1.Condition{
+				Type:               "DatabaseProvisioned",
+				Status:             metav1.ConditionFalse,
+				Reason:             "ProvisioningFailed",
+				Message:            fmt.Sprintf("Failed to provision database: %v", err),
+				LastTransitionTime: metav1.Now(),
+			}
+			tenant.Status.Conditions = append(tenant.Status.Conditions, condition)
+			if statusErr := r.Status().Update(ctx, tenant); statusErr != nil {
+				logger.Error(statusErr, "Failed to update Tenant status to Failed")
+			}
+			return ctrl.Result{}, err
+		}
+		logger.Info("Database provisioned successfully", "tenant", tenant.Name)
+
+		// Update status to indicate database and secret created
+		tenant.Status.DatabaseCreated = true
+		tenant.Status.SecretCreated = true
+		condition := metav1.Condition{
+			Type:               "DatabaseProvisioned",
+			Status:             metav1.ConditionTrue,
+			Reason:             "ProvisioningSucceeded",
+			Message:            "Database provisioned successfully",
+			LastTransitionTime: metav1.Now(),
+		}
+		tenant.Status.Conditions = append(tenant.Status.Conditions, condition)
+		if err := r.Status().Update(ctx, tenant); err != nil {
+			logger.Error(err, "Failed to update database status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	// Update status to Ready
@@ -399,7 +440,6 @@ func (r *TenantReconciler) reconcileConfigMap(ctx context.Context, tenant *tenan
 			"dbMode":        tenant.Spec.DB.Mode,
 			"dbServer":      tenant.Spec.DB.Server,
 			"dbDatabase":    tenant.Spec.DB.Database,
-			"dbSchema":      tenant.Spec.DB.Schema,
 			"throttlingRps": fmt.Sprintf("%d", tenant.Spec.Throttling.RPS),
 		},
 	}

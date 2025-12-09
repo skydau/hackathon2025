@@ -1,0 +1,95 @@
+# Device Registry Service 部署配置
+# 设备注册服务 - 管理设备到租户的映射关系
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: device-registry
+  namespace: platform-system
+  labels:
+    app: device-registry
+    component: core-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: device-registry
+  template:
+    metadata:
+      labels:
+        app: device-registry
+        component: core-service
+    spec:
+      containers:
+      - name: device-registry
+        # 使用本地构建的镜像
+        image: device-registry:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        # 数据库连接配置
+        - name: ConnectionStrings__DefaultConnection
+          value: "Server=host.minikube.internal,1433;Database=MedLogicPlatform;User Id=sa;Password=$(SQL_SERVER_PASSWORD);TrustServerCertificate=True;Encrypt=True;"
+        - name: SQL_SERVER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: password
+        # ASP.NET Core配置
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Development"
+        - name: ASPNETCORE_URLS
+          value: "http://+:8080"
+        # 日志配置
+        - name: Logging__LogLevel__Default
+          value: "Information"
+        - name: Logging__LogLevel__Microsoft.AspNetCore
+          value: "Warning"
+        # 健康检查
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # 资源限制
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: device-registry
+  namespace: platform-system
+  labels:
+    app: device-registry
+spec:
+  type: NodePort
+  selector:
+    app: device-registry
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    nodePort: 30081
+    protocol: TCP

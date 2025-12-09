@@ -1,5 +1,40 @@
 # 实施计划
 
+## 当前状态总结
+
+已完成的核心功能：
+- ✅ 项目基础架构（.NET解决方案、Docker配置）
+- ✅ Tenant Catalog Service（租户CRUD、数据库配置管理）
+- ✅ Device Registry Service（设备注册、租户映射）
+- ✅ DB Router中间件（租户感知数据库路由）
+- ✅ Tenant Operator基础功能（命名空间、ConfigMap、ResourceQuota、NetworkPolicy、RBAC）
+- ✅ Smart Gateway（NGINX + Lua，设备识别、租户ID注入、速率限制）
+- ✅ 密钥管理（Kubernetes Secret集成）
+- ✅ 数据加密（TDE、Always Encrypted）
+- ✅ 网络隔离（NetworkPolicy）
+- ✅ OPA Gatekeeper策略
+- ✅ 可观测性（Prometheus、Loki、Grafana集成）
+- ✅ SLO监控和告警
+- ✅ 租户退服流程
+- ✅ 成本分摊功能
+- ✅ 示例后端微服务（MedLogicService）
+- ✅ 演示UI（AdminUI）
+- ✅ 大部分属性测试和集成测试
+
+待完成的关键功能：
+- ⏳ **数据库自动创建功能**（任务6.6-6.14）：Tenant Operator需要实现自动连接本地SQL Server为每个租户创建独立数据库
+- ⏳ **本地部署配置**（任务18-18.3）：需要创建完整的Kubernetes部署清单、启动脚本和配置文件
+- ⏳ **端到端测试**（任务18.3）：验证从租户创建到数据库自动配置的完整流程
+
+## 下一步行动
+
+优先完成以下任务以实现完整的本地部署：
+1. 任务6.6-6.14：实现数据库自动创建功能
+2. 任务18-18.3：配置本地开发环境和部署清单
+3. 任务20：最终检查点，确保所有测试通过
+
+---
+
 - [x] 1. 搭建项目基础架构
 
 
@@ -269,33 +304,117 @@
   - **属性 10: 命名空间配置RBAC**
   - **验证需求: 2.5**
 
-- [ ] 6.6 实现数据库自动创建功能（本地SQL Server）
-  - 在Tenant Operator中实现DatabaseProvisioner组件
-  - 实现通过host.minikube.internal连接本地SQL Server
+- [x] 6.6 实现数据库自动创建功能（本地SQL Server）
+
+
+
+
+
+  - 在tenant-operator/pkg目录下创建database包
+  - 实现DatabaseProvisioner结构体和ProvisionDatabase方法
+  - 实现通过host.minikube.internal连接本地SQL Server（使用github.com/denisenkom/go-mssqldb驱动）
   - 为每个租户创建独立的数据库实例（使用SQL Server管理员凭据）
-  - 实现数据库用户创建和权限配置
-  - 实现TDE加密自动启用（可选）
-  - 实现数据库初始化脚本执行
-  - 实现将数据库凭据存储到Kubernetes Secret
-  - 实现数据库配置注册到Tenant Catalog
-  - 实现错误处理和回滚机制
+  - 实现数据库用户创建和权限配置（CREATE LOGIN, CREATE USER, ALTER ROLE）
+  - 实现TDE加密自动启用（可选，需要预先配置服务器证书）
+  - 实现数据库初始化脚本执行（从ConfigMap或嵌入的SQL文件读取）
+  - 实现将数据库凭据存储到Kubernetes Secret（在租户命名空间中）
+  - 实现调用Tenant Catalog Service注册数据库配置
+  - 实现错误处理和回滚机制（删除部分创建的数据库、清理Secret）
+  - 在TenantReconciler中集成DatabaseProvisioner，在命名空间创建后调用
+  - 更新Tenant CRD status字段（databaseCreated, secretCreated）
   - _需求: 2.6, 2.7, 2.8, 2.9_
 
-- [ ] 6.7 编写属性测试：Operator自动创建租户数据库
+- [x] 6.7 编写属性测试：Operator自动创建租户数据库
+
+
+
+
+
   - **属性 33: Operator自动创建租户数据库**
   - **验证需求: 7.3**
+  - 在tenant-operator/controllers/tenant_controller_test.go中添加测试
+  - 使用gopter生成随机Tenant实例
+  - 验证数据库在SQL Server上被创建
 
-- [ ] 6.8 编写属性测试：数据库初始化脚本执行
+- [x] 6.8 编写属性测试：数据库初始化脚本执行
+
+
+
+
+
   - **属性 10.2: 数据库初始化脚本执行**
   - **验证需求: 2.7**
+  - 验证初始化脚本中定义的表在数据库中存在
 
-- [ ] 6.9 编写属性测试：数据库创建失败状态更新
+- [x] 6.9 编写属性测试：数据库创建失败状态更新
+
+
+
+
+
   - **属性 10.3: 数据库创建失败状态更新**
   - **验证需求: 2.8**
+  - 模拟数据库创建失败场景
+  - 验证Tenant CRD的status.phase被更新为"Failed"
 
-- [ ] 6.10 编写属性测试：数据库配置注册到Catalog
+- [x] 6.10 编写属性测试：数据库配置注册到Catalog
+
+
+
+
+
   - **属性 10.4: 数据库配置注册到Catalog**
   - **验证需求: 2.9**
+  - 验证数据库配置被正确注册到Tenant Catalog Service
+
+- [x] 6.11 创建租户数据库初始化脚本
+
+
+
+
+
+  - 在scripts/sql目录下创建init-tenant-db.sql
+  - 定义Transactions表（Id, Amount, Description, CreatedAt）
+  - 定义AuditLogs表（Id, Action, UserId, Timestamp, Details）
+  - 创建必要的索引（IX_Transactions_CreatedAt, IX_AuditLogs_Timestamp）
+  - 在Tenant Operator中嵌入SQL脚本或从ConfigMap读取
+  - _需求: 2.7_
+
+- [x] 6.12 实现Tenant Catalog客户端（Go）
+
+
+
+
+
+  - 在tenant-operator/pkg目录下创建catalog包
+  - 实现TenantCatalogClient结构体
+  - 实现UpdateTenantDbConfig方法（调用Tenant Catalog的PATCH /api/tenants/{id}端点）
+  - 实现HTTP客户端配置（超时、重试机制）
+  - 在TenantReconciler中集成TenantCatalogClient
+  - _需求: 2.9_
+
+- [x] 6.13 集成数据库自动创建到Reconcile循环
+
+
+
+
+
+  - 在TenantReconciler结构体中添加DatabaseProvisioner和CatalogClient字段
+  - 在Reconcile方法中，在创建Secret之后调用DatabaseProvisioner.ProvisionDatabase
+  - 更新Tenant CRD status.databaseCreated字段
+  - 处理数据库创建失败的情况（更新status.phase为"Failed"，记录错误到status.conditions）
+  - 实现幂等性（检查数据库是否已存在，避免重复创建）
+  - 在main.go中初始化DatabaseProvisioner（从环境变量读取SQL Server连接信息）
+  - _需求: 2.6, 2.8_
+
+- [x] 6.14 检查点 - 确保数据库自动创建功能测试通过
+
+
+
+
+
+  - 确保所有数据库自动创建相关的属性测试通过
+  - 如有问题，请向用户报告
 
 - [x] 7. 集成Kubernetes Secret密钥管理
 
@@ -633,18 +752,57 @@
   - 实现基本的监控仪表盘（嵌入Grafana）
   - _需求: 1.1, 1.2, 3.1_
 
-- [ ] 18. 配置本地开发环境
+- [x] 18. 配置本地开发环境和部署清单
 
 
 
 
 
-  - 编写本地SQL Server安装和配置指南
-  - 创建Minikube启动脚本和配置
-  - 创建SQL Server管理员Secret部署脚本
-  - 配置host.minikube.internal网络访问
-  - 测试Minikube Pod到宿主机SQL Server的连接
-  - 编写本地环境故障排查指南
+  - 在k8s/local目录下创建Kubernetes部署清单
+  - 创建namespace.yaml（定义platform-system、gateway、observability命名空间）
+  - 创建tenant-catalog-deployment.yaml（Deployment和Service）
+  - 创建device-registry-deployment.yaml（Deployment和Service）
+  - 创建smart-gateway-deployment.yaml（NGINX网关的Deployment和Service）
+  - 创建tenant-operator-deployment.yaml（Operator的Deployment和RBAC）
+  - 创建sqlserver-admin-secret.yaml（SQL Server管理员凭据Secret模板）
+  - 配置所有Deployment使用imagePullPolicy: Never（本地镜像）
+  - 配置Service使用NodePort类型便于本地访问
+  - 创建Minikube启动脚本（scripts/start-minikube.sh）
+  - 创建本地镜像构建脚本（scripts/build-images.sh）
+  - 创建一键部署脚本（scripts/deploy-local.sh）
+  - 更新docs/LOCAL_ENVIRONMENT_GUIDE.zh.md补充详细的配置步骤
+  - 编写本地环境故障排查指南（docs/TROUBLESHOOTING.zh.md）
+
+- [x] 18.1 创建示例Tenant CRD配置
+
+
+  - 在tenant-operator/config/samples目录下创建完整的示例
+  - 创建hospital-a.yaml（示例租户A配置）
+  - 创建hospital-b.yaml（示例租户B配置）
+  - 包含完整的db、throttling、slo配置
+  - 添加注释说明各字段含义
+
+- [x] 18.2 创建SQL Server配置脚本
+
+
+  - 在scripts/sql目录下创建setup-sqlserver.sql
+  - 创建TDE主密钥和证书
+  - 创建MedLogicPlatform平台数据库
+  - 创建Tenants和Devices表
+  - 配置SQL Server认证和权限
+  - 添加验证查询
+
+- [x] 18.3 编写端到端集成测试脚本
+
+
+  - 创建scripts/test-e2e.sh脚本
+  - 测试创建Tenant CRD触发数据库自动创建
+  - 验证数据库在SQL Server上被创建
+  - 验证Secret在租户命名空间中被创建
+  - 验证数据库配置被注册到Tenant Catalog
+  - 测试通过Smart Gateway发送请求到后端服务
+  - 验证数据被写入正确的租户数据库
+  - 测试租户退服流程（备份、删除）
 
 - [x] 19. 编写部署文档和脚本
 

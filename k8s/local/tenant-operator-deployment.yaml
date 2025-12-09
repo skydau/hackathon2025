@@ -1,0 +1,177 @@
+# Tenant Operator 部署配置
+# 租户编排器 - 自动化管理租户生命周期
+
+---
+# ServiceAccount for Tenant Operator
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tenant-operator
+  namespace: platform-system
+
+---
+# ClusterRole for Tenant Operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenant-operator-role
+rules:
+# Tenant CRD权限
+- apiGroups: ["tenants.medlogic.io"]
+  resources: ["tenants"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["tenants.medlogic.io"]
+  resources: ["tenants/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["tenants.medlogic.io"]
+  resources: ["tenants/finalizers"]
+  verbs: ["update"]
+# 命名空间权限
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# ConfigMap和Secret权限
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# ResourceQuota权限
+- apiGroups: [""]
+  resources: ["resourcequotas"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# NetworkPolicy权限
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# RBAC权限
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Events权限（用于记录事件）
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+
+---
+# ClusterRoleBinding for Tenant Operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tenant-operator-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tenant-operator-role
+subjects:
+- kind: ServiceAccount
+  name: tenant-operator
+  namespace: platform-system
+
+---
+# Deployment for Tenant Operator
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-operator
+  namespace: platform-system
+  labels:
+    app: tenant-operator
+    component: operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tenant-operator
+  template:
+    metadata:
+      labels:
+        app: tenant-operator
+        component: operator
+    spec:
+      serviceAccountName: tenant-operator
+      containers:
+      - name: manager
+        # 使用本地构建的镜像
+        image: tenant-operator:latest
+        imagePullPolicy: Never
+        command:
+        - /manager
+        env:
+        # SQL Server连接配置
+        - name: SQL_SERVER_HOST
+          value: "host.minikube.internal,1433"
+        - name: SQL_SERVER_ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: username
+        - name: SQL_SERVER_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: password
+        # Tenant Catalog Service地址
+        - name: TENANT_CATALOG_URL
+          value: "http://tenant-catalog.platform-system.svc.cluster.local:8080"
+        # Operator配置
+        - name: ENABLE_WEBHOOKS
+          value: "false"
+        - name: METRICS_BIND_ADDRESS
+          value: ":8080"
+        - name: HEALTH_PROBE_BIND_ADDRESS
+          value: ":8081"
+        # 日志配置
+        - name: LOG_LEVEL
+          value: "info"
+        ports:
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        # 健康检查
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        # 资源限制
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        # 安全上下文
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+
+---
+# Service for Tenant Operator metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-operator-metrics
+  namespace: platform-system
+  labels:
+    app: tenant-operator
+spec:
+  selector:
+    app: tenant-operator
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+    protocol: TCP

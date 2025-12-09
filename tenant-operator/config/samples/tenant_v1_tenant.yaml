@@ -1,15 +1,41 @@
+# 基础Tenant CRD示例
+# 这是最小化配置示例，展示必需字段
 apiVersion: tenants.medlogic.io/v1
 kind: Tenant
 metadata:
-  name: hospital-a
+  # 租户唯一标识符 - 必需
+  # 用于生成命名空间名称: tenant-{name}
+  name: hospital-example
+  
+  # 标签（可选但推荐）
+  labels:
+    tenant-type: hospital
 spec:
-  displayName: "Hospital A"
+  # 租户显示名称 - 必需
+  displayName: "Hospital Example"
+  
+  # 数据库配置 - 必需
   db:
+    # 数据库隔离模式 - 必需
+    # 支持的值: perDatabase（每租户独立数据库）
     mode: perDatabase
-    server: sqlserver.default.svc.cluster.local
-    database: HospitalA_DB
+    
+    # SQL Server地址 - 必需
+    # 本地部署使用: host.minikube.internal,1433
+    # 集群内SQL Server使用: sqlserver.default.svc.cluster.local
+    server: "host.minikube.internal,1433"
+    
+    # 数据库名称 - 可选
+    # 不指定则自动生成为 {DisplayName}_DB
+    database: HospitalExample_DB
+  
+  # 速率限制配置 - 可选
+  # 不指定则使用默认值（100 rps）
   throttling:
     rps: 100
+  
+  # 服务等级目标配置 - 可选
+  # 不指定则使用默认值
   slo:
     availability: "99.9%"
     p95_latency_ms: 1000

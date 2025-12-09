@@ -1,0 +1,50 @@
+# 示例租户配置 - Hospital B
+# 这是一个高级配置的医院租户示例，具有更高的性能要求
+apiVersion: tenants.medlogic.io/v1
+kind: Tenant
+metadata:
+  name: hospital-b
+  labels:
+    # 租户类型标签
+    tenant-type: hospital
+    # 环境标签
+    environment: production
+    # 服务等级标签
+    service-tier: premium
+spec:
+  # 租户显示名称
+  displayName: "Hospital B"
+  
+  # 数据库配置
+  db:
+    # 数据库隔离模式
+    mode: perDatabase
+    
+    # SQL Server地址（从Minikube访问宿主机）
+    server: "host.minikube.internal,1433"
+    
+    # 数据库名称
+    database: HospitalB_DB
+    
+    # 数据库用户名（自动生成）
+    # username: hospital_b_user
+  
+  # 速率限制配置（更高的限制，适用于高流量租户）
+  throttling:
+    # 每秒请求数限制 - 是标准配置的2倍
+    rps: 200
+  
+  # 服务等级目标配置（更严格的SLO，适用于关键业务）
+  slo:
+    # 更高的可用性目标 - 99.95%
+    availability: "99.95%"
+    
+    # 更低的延迟目标 - 500ms
+    # 适用于对响应时间敏感的应用
+    p95_latency_ms: 500
+  
+  # 资源配额配置（可选）- 高级租户可能需要更多资源
+  # resourceQuota:
+  #   cpu: "4"
+  #   memory: "8Gi"
+  #   pods: "20"

@@ -1,0 +1,95 @@
+# Tenant Catalog Service 部署配置
+# 租户目录服务 - 管理所有租户元数据
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-catalog
+  namespace: platform-system
+  labels:
+    app: tenant-catalog
+    component: core-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tenant-catalog
+  template:
+    metadata:
+      labels:
+        app: tenant-catalog
+        component: core-service
+    spec:
+      containers:
+      - name: tenant-catalog
+        # 使用本地构建的镜像
+        image: tenant-catalog:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        # 数据库连接配置
+        - name: ConnectionStrings__DefaultConnection
+          value: "Server=host.minikube.internal,1433;Database=MedLogicPlatform;User Id=sa;Password=$(SQL_SERVER_PASSWORD);TrustServerCertificate=True;Encrypt=True;"
+        - name: SQL_SERVER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: password
+        # ASP.NET Core配置
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Development"
+        - name: ASPNETCORE_URLS
+          value: "http://+:8080"
+        # 日志配置
+        - name: Logging__LogLevel__Default
+          value: "Information"
+        - name: Logging__LogLevel__Microsoft.AspNetCore
+          value: "Warning"
+        # 健康检查
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # 资源限制
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-catalog
+  namespace: platform-system
+  labels:
+    app: tenant-catalog
+spec:
+  type: NodePort
+  selector:
+    app: tenant-catalog
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    nodePort: 30080
+    protocol: TCP

@@ -21,7 +21,7 @@ type TenantSpec struct {
 
 // DatabaseConfig defines database configuration for a tenant
 type DatabaseConfig struct {
-	// Mode is either "perDatabase" or "perSchema"
+	// Mode is always "perDatabase" (each tenant has its own database)
 	Mode string `json:"mode"`
 
 	// Server is the database server address
@@ -29,9 +29,6 @@ type DatabaseConfig struct {
 
 	// Database is the database name
 	Database string `json:"database"`
-
-	// Schema is the schema name (for perSchema mode)
-	Schema string `json:"schema,omitempty"`
 }
 
 // ThrottlingConfig defines rate limiting configuration
@@ -59,6 +56,12 @@ type TenantStatus struct {
 
 	// NamespaceCreated indicates if the namespace has been created
 	NamespaceCreated bool `json:"namespaceCreated,omitempty"`
+
+	// DatabaseCreated indicates if the database has been created
+	DatabaseCreated bool `json:"databaseCreated,omitempty"`
+
+	// SecretCreated indicates if the database secret has been created
+	SecretCreated bool `json:"secretCreated,omitempty"`
 
 	// ResourcesProvisioned indicates if all resources have been provisioned
 	ResourcesProvisioned bool `json:"resourcesProvisioned,omitempty"`

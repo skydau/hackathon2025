@@ -1,0 +1,61 @@
+# 示例租户配置 - Hospital A
+# 这是一个标准配置的医院租户示例
+apiVersion: tenants.medlogic.io/v1
+kind: Tenant
+metadata:
+  name: hospital-a
+  labels:
+    # 租户类型标签
+    tenant-type: hospital
+    # 环境标签
+    environment: production
+spec:
+  # 租户显示名称 - 用于UI展示和日志记录
+  displayName: "Hospital A"
+  
+  # 数据库配置
+  db:
+    # 数据库隔离模式: perDatabase（每租户独立数据库）
+    # 这是推荐的模式，提供最强的数据隔离保障
+    mode: perDatabase
+    
+    # SQL Server地址（从Minikube访问宿主机）
+    # host.minikube.internal 是Minikube提供的特殊DNS名称，指向宿主机
+    # 端口1433是SQL Server的默认端口
+    server: "host.minikube.internal,1433"
+    
+    # 数据库名称（可选，不指定则自动生成为 HospitalA_DB）
+    # Tenant Operator会自动创建这个数据库
+    database: HospitalA_DB
+    
+    # 数据库用户名（可选，不指定则自动生成为 hospital_a_user）
+    # Tenant Operator会自动创建这个用户并授予db_owner权限
+    # username: hospital_a_user
+    
+    # 数据库初始化脚本路径（可选）
+    # 如果指定，Operator会在创建数据库后执行此脚本
+    # initScriptPath: /scripts/init-tenant-db.sql
+  
+  # 速率限制配置 - 防止单个租户过度使用资源
+  throttling:
+    # 每秒请求数限制
+    # Smart Gateway会基于X-Tenant-Id头应用此限制
+    rps: 100
+  
+  # 服务等级目标配置 - 用于监控和告警
+  slo:
+    # 可用性目标（百分比）
+    # Prometheus会监控实际可用性并在低于此值时告警
+    availability: "99.9%"
+    
+    # p95延迟目标（毫秒）
+    # 95%的请求应该在此时间内完成
+    # 超过此值会触发告警
+    p95_latency_ms: 1000
+  
+  # 资源配额配置（可选）
+  # 如果不指定，使用默认值
+  # resourceQuota:
+  #   cpu: "2"
+  #   memory: "4Gi"
+  #   pods: "10"

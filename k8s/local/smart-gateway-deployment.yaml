@@ -1,0 +1,112 @@
+# Smart Gateway 部署配置
+# 智能网关 - 处理设备请求路由和租户识别
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: gateway
+data:
+  nginx.conf: |
+    # NGINX配置文件将从nginx/nginx.conf复制
+    # 在实际部署时需要将nginx/nginx.conf的内容复制到这里
+    # 或者使用ConfigMap从文件创建: kubectl create configmap nginx-config --from-file=nginx/nginx.conf -n gateway
+    
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-gateway
+  namespace: gateway
+  labels:
+    app: smart-gateway
+    component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smart-gateway
+  template:
+    metadata:
+      labels:
+        app: smart-gateway
+        component: gateway
+    spec:
+      containers:
+      - name: nginx
+        # 使用本地构建的镜像
+        image: smart-gateway:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+        env:
+        # Device Registry服务地址
+        - name: DEVICE_REGISTRY_URL
+          value: "http://device-registry.platform-system.svc.cluster.local:8080"
+        # 后端服务地址
+        - name: BACKEND_SERVICE_URL
+          value: "http://medlogic-service.default.svc.cluster.local:8080"
+        # 日志级别
+        - name: NGINX_LOG_LEVEL
+          value: "info"
+        # 挂载配置文件
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: lua-scripts
+          mountPath: /etc/nginx/lua
+        # 健康检查
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # 资源限制
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: lua-scripts
+        configMap:
+          name: lua-scripts
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smart-gateway
+  namespace: gateway
+  labels:
+    app: smart-gateway
+spec:
+  type: NodePort
+  selector:
+    app: smart-gateway
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30000
+    protocol: TCP

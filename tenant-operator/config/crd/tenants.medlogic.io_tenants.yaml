@@ -36,10 +36,7 @@ spec:
                     description: Database is the database name
                     type: string
                   mode:
-                    description: Mode is either "perDatabase" or "perSchema"
-                    type: string
-                  schema:
-                    description: Schema is the schema name (for perSchema mode)
+                    description: Mode is always "perDatabase" (each tenant has its own database)
                     type: string
                   server:
                     description: Server is the database server address

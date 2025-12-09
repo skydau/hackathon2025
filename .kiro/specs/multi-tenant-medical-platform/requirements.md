@@ -99,17 +99,16 @@
 4. WHEN DB Router建立连接池后 THEN DB Router SHALL 通过该连接池执行数据库操作
 5. WHEN 请求上下文中缺少租户ID THEN DB Router SHALL 抛出错误并拒绝执行数据库操作
 
-### 需求 7: 数据库隔离策略支持
+### 需求 7: 数据库隔离策略
 
-**用户故事:** 作为系统架构师，我希望系统能够支持多种数据库隔离模式，以便根据业务需求在安全性和成本之间进行权衡。
+**用户故事:** 作为系统架构师，我希望系统使用Database-per-Tenant模式，以便为每个租户提供最强的数据隔离和安全保障。
 
 #### 验收标准
 
 1. WHERE 租户配置为Database-per-Tenant模式 THEN DB Router SHALL 连接到该租户的专属数据库实例
-2. WHERE 租户配置为Schema-per-Tenant模式 THEN DB Router SHALL 连接到共享数据库实例并使用租户特定的模式
-3. WHEN 租户的数据库模式在Tenant CRD中被指定 THEN Tenant Operator SHALL 根据模式创建相应的数据库资源
+2. WHEN 租户的数据库模式在Tenant CRD中被指定 THEN Tenant Operator SHALL 根据模式创建相应的数据库资源
+3. WHEN 使用Database-per-Tenant模式 THEN Tenant Operator SHALL 自动为每个租户创建独立的数据库实例
 4. WHEN 使用Database-per-Tenant模式 THEN DB Router SHALL 确保每个租户的连接池完全独立
-5. WHEN 使用Schema-per-Tenant模式 THEN DB Router SHALL 在SQL查询中自动添加模式前缀
 
 ### 需求 8: 网络层隔离
 

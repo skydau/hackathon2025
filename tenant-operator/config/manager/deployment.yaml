@@ -48,6 +48,29 @@ spec:
         - /manager
         args:
         - --leader-elect
+        env:
+        # SQL Server连接配置（用于数据库自动创建）
+        - name: SQL_SERVER_HOST
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: server
+              optional: true
+        - name: SQL_SERVER_ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: username
+              optional: true
+        - name: SQL_SERVER_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: password
+              optional: true
+        # Tenant Catalog Service URL（用于注册数据库配置）
+        - name: TENANT_CATALOG_URL
+          value: "http://tenant-catalog.platform-system.svc.cluster.local:8080"
         resources:
           limits:
             cpu: 500m

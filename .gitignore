@@ -179,5 +179,5 @@ htmlcov/
 .terraform.lock.hcl
 
 # Local development
-local/
+# local/
 scratch/

@@ -1,0 +1,35 @@
+# 本地开发环境命名空间配置
+# 定义平台所需的核心命名空间
+
+---
+# 平台系统命名空间 - 用于部署核心服务
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-system
+  labels:
+    name: platform-system
+    environment: local
+    purpose: core-services
+
+---
+# 网关命名空间 - 用于部署Smart Gateway
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    name: gateway
+    environment: local
+    purpose: ingress
+
+---
+# 可观测性命名空间 - 用于部署监控和日志服务
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    name: observability
+    environment: local
+    purpose: monitoring
