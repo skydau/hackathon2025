@@ -2,6 +2,14 @@ using System.Net.Http.Json;
 
 namespace AdminUI.Services;
 
+public enum TenantStatus
+{
+    Provisioning,
+    Enabled,
+    Disabled,
+    Decommissioned
+}
+
 public class TenantCatalogClient
 {
     private readonly HttpClient _httpClient;
@@ -49,7 +57,7 @@ public class TenantDto
 {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
+    public TenantStatus Status { get; set; }
     public DatabaseConfigDto? DbConfig { get; set; }
     public ThrottlingConfigDto? Throttling { get; set; }
     public SloConfigDto? Slo { get; set; }
@@ -63,6 +71,7 @@ public class DatabaseConfigDto
     public string Server { get; set; } = string.Empty;
     public string Database { get; set; } = string.Empty;
     public string? Schema { get; set; }
+    public string CredentialRef { get; set; } = string.Empty;
 }
 
 public class ThrottlingConfigDto
@@ -79,11 +88,7 @@ public class SloConfigDto
 public class CreateTenantRequest
 {
     public string DisplayName { get; set; } = string.Empty;
-    public string DbMode { get; set; } = "perDatabase";
-    public string DbServer { get; set; } = string.Empty;
-    public string DbDatabase { get; set; } = string.Empty;
-    public string? DbSchema { get; set; }
-    public int ThrottlingRps { get; set; } = 100;
-    public string? SloAvailability { get; set; }
-    public int? SloP95LatencyMs { get; set; }
+    public DatabaseConfigDto DbConfig { get; set; } = new();
+    public ThrottlingConfigDto? Throttling { get; set; }
+    public SloConfigDto? Slo { get; set; }
 }

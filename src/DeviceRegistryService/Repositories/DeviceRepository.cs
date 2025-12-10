@@ -47,4 +47,11 @@ public class DeviceRepository : IDeviceRepository
         return await _context.Devices
             .AnyAsync(d => d.SerialNumber == serialNumber);
     }
+
+    public async Task<IEnumerable<Device>> GetAllAsync()
+    {
+        return await _context.Devices
+            .OrderByDescending(d => d.RegisteredAt)
+            .ToListAsync();
+    }
 }

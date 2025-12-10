@@ -41,6 +41,17 @@ public class TenantsController : ControllerBase
         return CreatedAtAction(nameof(GetTenant), new { id = created.Id }, response);
     }
 
+    [HttpGet]
+    public async Task<ActionResult<List<TenantResponse>>> GetAllTenants()
+    {
+        var tenants = await _repository.GetAllAsync();
+        
+        _logger.LogInformation("Retrieved {Count} tenants", tenants.Count());
+
+        var responses = tenants.Select(MapToResponse).ToList();
+        return Ok(responses);
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<TenantResponse>> GetTenant(string id)
     {

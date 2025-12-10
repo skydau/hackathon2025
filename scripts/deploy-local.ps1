@@ -1,141 +1,141 @@
-# 一键部署脚本（PowerShell版本）
-# 将所有平台组件部署到本地Minikube集群
+
+# One-click Deployment Script (PowerShell)
+# Deploy all platform components to local Minikube cluster
 
 param(
-    [string]$SqlPassword = ""
+    [Parameter(Mandatory = $true)]
+    [string]$SqlPassword
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
-Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║         多租户医疗平台 - 本地环境部署                        ║" -ForegroundColor Cyan
-Write-Host "╚════════════════════════════════════════════════════════════╝`n" -ForegroundColor Cyan
+Write-Host "=== Multi-tenant Medical Platform - Local Deployment ===`n" -ForegroundColor Cyan
 
-# 检查SQL Server密码
-if ([string]::IsNullOrEmpty($SqlPassword)) {
-    Write-Host "✗ 请提供SQL Server密码" -ForegroundColor Red
-    Write-Host "  用法: .\scripts\deploy-local.ps1 -SqlPassword 'YourPassword'" -ForegroundColor Gray
+# Check SQL Server password
+if ([string]::IsNullOrWhiteSpace($SqlPassword)) {
+    Write-Host "ERROR: Please provide SQL Server password." -ForegroundColor Red
+    Write-Host "Usage: .\scripts\deploy-local.ps1 -SqlPassword 'YourPassword'" -ForegroundColor Gray
     exit 1
 }
 
-# 检查Minikube状态
-Write-Host "检查Minikube状态..." -ForegroundColor Yellow
-$minikubeStatus = minikube status --format='{{.Host}}' 2>$null
+# Check Minikube status
+Write-Host "Checking Minikube status..." -ForegroundColor Yellow
+$minikubeStatus = & minikube status --format='{{.Host}}' 2>$null
 
-if ($minikubeStatus -ne "Running") {
-    Write-Host "✗ Minikube未运行" -ForegroundColor Red
-    Write-Host "  请先启动Minikube: .\scripts\start-minikube.ps1" -ForegroundColor Gray
+if ($minikubeStatus -ne 'Running') {
+    Write-Host "ERROR: Minikube is not running." -ForegroundColor Red
+    Write-Host "Start Minikube first: .\scripts\start-minikube.ps1" -ForegroundColor Gray
     exit 1
-}
-
-Write-Host "✓ Minikube正在运行" -ForegroundColor Green
-
-# 步骤1: 创建命名空间
-Write-Host "`n[1/7] 创建命名空间..." -ForegroundColor Yellow
-kubectl apply -f k8s/local/namespace.yaml
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ 命名空间创建成功" -ForegroundColor Green
 } else {
-    Write-Host "✗ 命名空间创建失败" -ForegroundColor Red
-    exit 1
+    Write-Host "Minikube is running." -ForegroundColor Green
 }
 
-# 步骤2: 创建SQL Server Secret
-Write-Host "`n[2/7] 创建SQL Server Secret..." -ForegroundColor Yellow
-kubectl create secret generic sqlserver-admin-secret `
+# Step 1: Create namespaces
+Write-Host "`n[1/7] Creating namespaces..." -ForegroundColor Yellow
+& kubectl apply -f k8s/local/namespace.yaml
+if (-not $?) {
+    Write-Host "ERROR: Failed to create namespaces." -ForegroundColor Red
+    exit 1
+} else {
+    Write-Host "Namespaces created successfully." -ForegroundColor Green
+}
+
+# Step 2: Create SQL Server Secret (build YAML first, then apply)
+Write-Host "`n[2/7] Creating SQL Server Secret..." -ForegroundColor Yellow
+$secretYaml = & kubectl create secret generic sqlserver-admin-secret `
     --from-literal=username=sa `
-    --from-literal=password=$SqlPassword `
+    --from-literal=password="$SqlPassword" `
     --from-literal=server="host.minikube.internal,1433" `
     -n platform-system `
-    --dry-run=client -o yaml | kubectl apply -f -
+    --dry-run=client -o yaml
 
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ SQL Server Secret创建成功" -ForegroundColor Green
-} else {
-    Write-Host "✗ SQL Server Secret创建失败" -ForegroundColor Red
+if (-not $?) {
+    Write-Host "ERROR: Failed to prepare SQL Server Secret YAML." -ForegroundColor Red
     exit 1
 }
 
-# 步骤3: 安装Tenant CRD
-Write-Host "`n[3/7] 安装Tenant CRD..." -ForegroundColor Yellow
+$null = $secretYaml | kubectl apply -f -
+if (-not $?) {
+    Write-Host "ERROR: Failed to create SQL Server Secret." -ForegroundColor Red
+    exit 1
+} else {
+    Write-Host "SQL Server Secret created successfully." -ForegroundColor Green
+}
 
-if (Test-Path "tenant-operator/config/crd/tenants.medlogic.io_tenants.yaml") {
-    kubectl apply -f tenant-operator/config/crd/tenants.medlogic.io_tenants.yaml
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Tenant CRD安装成功" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Tenant CRD安装失败" -ForegroundColor Red
+# Step 3: Install Tenant CRD
+Write-Host "`n[3/7] Installing Tenant CRD..." -ForegroundColor Yellow
+$crdPath = "tenant-operator/config/crd/tenants.medlogic.io_tenants.yaml"
+if (Test-Path $crdPath) {
+    & kubectl apply -f $crdPath
+    if (-not $?) {
+        Write-Host "ERROR: Failed to install Tenant CRD." -ForegroundColor Red
         exit 1
+    } else {
+        Write-Host "Tenant CRD installed successfully." -ForegroundColor Green
     }
 } else {
-    Write-Host "⚠ Tenant CRD文件不存在，跳过" -ForegroundColor Yellow
+    Write-Host "WARNING: Tenant CRD file not found, skipping." -ForegroundColor Yellow
 }
 
-# 步骤4: 部署Tenant Operator
-Write-Host "`n[4/7] 部署Tenant Operator..." -ForegroundColor Yellow
-kubectl apply -f k8s/local/tenant-operator-deployment.yaml
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Tenant Operator部署成功" -ForegroundColor Green
-} else {
-    Write-Host "✗ Tenant Operator部署失败" -ForegroundColor Red
+# Step 4: Deploy Tenant Operator
+Write-Host "`n[4/7] Deploying Tenant Operator..." -ForegroundColor Yellow
+& kubectl apply -f k8s/local/tenant-operator-deployment.yaml
+if (-not $?) {
+    Write-Host "ERROR: Failed to deploy Tenant Operator." -ForegroundColor Red
     exit 1
-}
-
-# 步骤5: 部署Tenant Catalog Service
-Write-Host "`n[5/7] 部署Tenant Catalog Service..." -ForegroundColor Yellow
-kubectl apply -f k8s/local/tenant-catalog-deployment.yaml
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Tenant Catalog Service部署成功" -ForegroundColor Green
 } else {
-    Write-Host "✗ Tenant Catalog Service部署失败" -ForegroundColor Red
-    exit 1
+    Write-Host "Tenant Operator deployed successfully." -ForegroundColor Green
 }
 
-# 步骤6: 部署Device Registry Service
-Write-Host "`n[6/7] 部署Device Registry Service..." -ForegroundColor Yellow
-kubectl apply -f k8s/local/device-registry-deployment.yaml
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Device Registry Service部署成功" -ForegroundColor Green
+# Step 5: Deploy Tenant Catalog Service
+Write-Host "`n[5/7] Deploying Tenant Catalog Service..." -ForegroundColor Yellow
+& kubectl apply -f k8s/local/tenant-catalog-deployment.yaml
+if (-not $?) {
+    Write-Host "ERROR: Failed to deploy Tenant Catalog Service." -ForegroundColor Red
+    exit 1
 } else {
-    Write-Host "✗ Device Registry Service部署失败" -ForegroundColor Red
-    exit 1
+    Write-Host "Tenant Catalog Service deployed successfully." -ForegroundColor Green
 }
 
-# 步骤7: 部署Smart Gateway
-Write-Host "`n[7/7] 部署Smart Gateway..." -ForegroundColor Yellow
-kubectl apply -f k8s/local/smart-gateway-deployment.yaml
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Smart Gateway部署成功" -ForegroundColor Green
+# Step 6: Deploy Device Registry Service
+Write-Host "`n[6/7] Deploying Device Registry Service..." -ForegroundColor Yellow
+& kubectl apply -f k8s/local/device-registry-deployment.yaml
+if (-not $?) {
+    Write-Host "ERROR: Failed to deploy Device Registry Service." -ForegroundColor Red
+    exit 1
 } else {
-    Write-Host "✗ Smart Gateway部署失败" -ForegroundColor Red
-    exit 1
+    Write-Host "Device Registry Service deployed successfully." -ForegroundColor Green
 }
 
-# 等待Pod就绪
-Write-Host "`n等待Pod就绪..." -ForegroundColor Yellow
-Write-Host "  这可能需要几分钟时间..." -ForegroundColor Gray
+# Step 7: Deploy Smart Gateway
+Write-Host "`n[7/7] Deploying Smart Gateway..." -ForegroundColor Yellow
+& kubectl apply -f k8s/local/smart-gateway-deployment.yaml
+if (-not $?) {
+    Write-Host "ERROR: Failed to deploy Smart Gateway." -ForegroundColor Red
+    exit 1
+} else {
+    Write-Host "Smart Gateway deployed successfully." -ForegroundColor Green
+}
 
+# Wait for Pods to be ready
+Write-Host "`nWaiting for Pods to become Ready..." -ForegroundColor Yellow
+Write-Host "This may take a few minutes..." -ForegroundColor Gray
 Start-Sleep -Seconds 10
 
-# 检查Pod状态
-Write-Host "`nPod状态:" -ForegroundColor Cyan
-kubectl get pods -n platform-system
-kubectl get pods -n gateway
+# Show Pod status
+Write-Host "`nPod status:" -ForegroundColor Cyan
+& kubectl get pods -n platform-system
+& kubectl get pods -n gateway
 
-# 显示服务端点
-Write-Host "`n服务端点:" -ForegroundColor Cyan
-Write-Host "  Tenant Catalog: http://$(minikube ip):30080" -ForegroundColor Gray
-Write-Host "  Device Registry: http://$(minikube ip):30081" -ForegroundColor Gray
-Write-Host "  Smart Gateway: http://$(minikube ip):30000" -ForegroundColor Gray
+# Show service endpoints
+$miniIp = (& minikube ip).Trim()
+Write-Host "`nService endpoints:" -ForegroundColor Cyan
+Write-Host ("Tenant Catalog:  http://{0}:30080" -f $miniIp) -ForegroundColor Gray
+Write-Host ("Device Registry: http://{0}:30081" -f $miniIp) -ForegroundColor Gray
+Write-Host ("Smart Gateway:   http://{0}:30000" -f $miniIp) -ForegroundColor Gray
 
-Write-Host "`n✓ 部署完成" -ForegroundColor Green
-Write-Host "`n下一步:" -ForegroundColor Yellow
-Write-Host "  1. 创建测试租户: kubectl apply -f tenant-operator/config/samples/hospital-a.yaml" -ForegroundColor Gray
-Write-Host "  2. 运行端到端测试: .\scripts\test-e2e.ps1 -SqlServerPassword '$SqlPassword'" -ForegroundColor Gray
-Write-Host "  3. 查看日志: kubectl logs -n platform-system -l app=tenant-operator -f" -ForegroundColor Gray
+Write-Host "`nDeployment completed." -ForegroundColor Green
+Write-Host "`nNext steps:" -ForegroundColor Yellow
+Write-Host "1) Create test tenant: kubectl apply -f tenant-operator/config/samples/hospital-a.yaml" -ForegroundColor Gray
+Write-Host ("2) Run end-to-end tests: .\scripts\test-e2e.ps1 -SqlServerPassword '{0}'" -f $SqlPassword) -ForegroundColor Gray
+Write-Host "3) View logs: kubectl logs -n platform-system -l app=tenant-operator -f" -ForegroundColor Gray

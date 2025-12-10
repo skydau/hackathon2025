@@ -8,4 +8,5 @@ public interface IDeviceRepository
     Task<Device> CreateAsync(Device device);
     Task<Device?> UpdateAsync(string serialNumber, Device device);
     Task<bool> ExistsAsync(string serialNumber);
+    Task<IEnumerable<Device>> GetAllAsync();
 }

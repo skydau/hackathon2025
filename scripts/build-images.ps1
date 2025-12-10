@@ -1,29 +1,50 @@
-# 本地镜像构建脚本（PowerShell版本）
-# 构建所有平台服务的Docker镜像
+
+# Local image build script (PowerShell)
+# Builds all platform Docker images and uses minikube's Docker daemon.
 
 param(
-    [switch]$SkipTests = $false
+    [switch]$SkipTests = $false,
+    [string]$Profile = "minikube"  # change to "mk-docker" if you created a docker profile
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║         多租户医疗平台 - 本地镜像构建                        ║" -ForegroundColor Cyan
-Write-Host "╚════════════════════════════════════════════════════════════╝`n" -ForegroundColor Cyan
-
-# 设置Minikube Docker环境
-Write-Host "配置Docker环境..." -ForegroundColor Yellow
-& minikube -p minikube docker-env --shell powershell | Invoke-Expression
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ 无法配置Minikube Docker环境" -ForegroundColor Red
-    Write-Host "  请确保Minikube正在运行: minikube start" -ForegroundColor Gray
+function Fail($msg) {
+    Write-Host "ERROR: $msg" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "✓ Docker环境已配置为使用Minikube" -ForegroundColor Green
+function Check-Cmd($name) {
+    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
+        Fail "Command not found: $name. Please install and ensure it is in PATH."
+    }
+}
 
-# 构建.NET服务镜像
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  Multi-Tenant Medical Platform - Local Image Build" -ForegroundColor Cyan
+Write-Host "============================================================`n" -ForegroundColor Cyan
+
+# Check required commands
+Check-Cmd "minikube"
+Check-Cmd "kubectl"
+Check-Cmd "docker"
+
+# Ensure minikube is running for the given profile
+Write-Host "Checking minikube status for profile '$Profile'..." -ForegroundColor Yellow
+minikube -p $Profile status | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Fail "Minikube (profile=$Profile) is not running. Start it first: minikube start -p $Profile"
+}
+
+# Use minikube's Docker daemon
+Write-Host "Configuring Docker to use minikube's Docker daemon..." -ForegroundColor Yellow
+minikube -p $Profile docker-env --shell powershell | Invoke-Expression
+if ($LASTEXITCODE -ne 0) {
+    Fail "Failed to configure Docker environment from minikube. Please run: minikube -p $Profile docker-env"
+}
+Write-Host "OK: Docker is now targeting minikube ($Profile)" -ForegroundColor Green
+
+# .NET service images (build CONTEXT = repo root '.')
 $dotnetServices = @(
     @{Name="Tenant Catalog Service"; Path="src/TenantCatalogService"; Tag="tenant-catalog:latest"},
     @{Name="Device Registry Service"; Path="src/DeviceRegistryService"; Tag="device-registry:latest"},
@@ -31,80 +52,87 @@ $dotnetServices = @(
     @{Name="Admin UI"; Path="src/AdminUI"; Tag="admin-ui:latest"}
 )
 
-foreach ($service in $dotnetServices) {
-    Write-Host "`n构建 $($service.Name)..." -ForegroundColor Yellow
-    
-    if (Test-Path "$($service.Path)/Dockerfile") {
-        docker build -t $service.Tag -f "$($service.Path)/Dockerfile" .
-        
+foreach ($svc in $dotnetServices) {
+    $name = $svc.Name
+    $path = $svc.Path
+    $tag  = $svc.Tag
+
+    Write-Host "`nBuilding $name..." -ForegroundColor Yellow
+
+    $dockerfile = Join-Path $path "Dockerfile"
+    if (Test-Path $dockerfile) {
+        # IMPORTANT: use repo root '.' as build context, because Dockerfile copies src/...
+        docker build -t $tag -f $dockerfile .
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ $($service.Name) 构建成功" -ForegroundColor Green
+            Write-Host "OK: $name built successfully -> $tag" -ForegroundColor Green
         } else {
-            Write-Host "✗ $($service.Name) 构建失败" -ForegroundColor Red
-            exit 1
+            Fail "$name build failed (exit code $LASTEXITCODE)"
         }
     } else {
-        Write-Host "⚠ Dockerfile不存在: $($service.Path)/Dockerfile" -ForegroundColor Yellow
+        Write-Host "WARN: Dockerfile not found: $dockerfile" -ForegroundColor Yellow
     }
 }
 
-# 构建Smart Gateway镜像
-Write-Host "`n构建 Smart Gateway..." -ForegroundColor Yellow
-
-if (Test-Path "nginx/Dockerfile") {
-    docker build -t smart-gateway:latest -f nginx/Dockerfile nginx/
-    
+# Smart Gateway image (nginx) - context can be 'nginx' safely
+Write-Host "`nBuilding Smart Gateway (nginx)..." -ForegroundColor Yellow
+$nginxDockerfile = "nginx/Dockerfile"
+if (Test-Path $nginxDockerfile) {
+    docker build -t smart-gateway:latest -f $nginxDockerfile "nginx"
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Smart Gateway 构建成功" -ForegroundColor Green
+        Write-Host "OK: Smart Gateway built successfully" -ForegroundColor Green
     } else {
-        Write-Host "✗ Smart Gateway 构建失败" -ForegroundColor Red
-        exit 1
+        Fail "Smart Gateway build failed (exit code $LASTEXITCODE)"
     }
 } else {
-    Write-Host "⚠ Dockerfile不存在: nginx/Dockerfile" -ForegroundColor Yellow
+    Write-Host "WARN: Dockerfile not found: $nginxDockerfile" -ForegroundColor Yellow
 }
 
-# 构建Tenant Operator镜像
-Write-Host "`n构建 Tenant Operator..." -ForegroundColor Yellow
+# Tenant Operator image (Go) - context = tenant-operator
+Write-Host "`nBuilding Tenant Operator (Go)..." -ForegroundColor Yellow
+$operatorDir = "tenant-operator"
+$operatorDockerfile = Join-Path $operatorDir "Dockerfile"
+if (Test-Path $operatorDockerfile) {
+    Push-Location $operatorDir
 
-if (Test-Path "tenant-operator/Dockerfile") {
-    Push-Location tenant-operator
-    
-    # 构建Go二进制文件
-    Write-Host "  编译Go代码..." -ForegroundColor Gray
+    # Check Go toolchain
+    if (-not (Get-Command "go" -ErrorAction SilentlyContinue)) {
+        Pop-Location
+        Fail "Go toolchain not found. Please install Go and ensure 'go' is in PATH."
+    }
+
+    # Build static linux/amd64 binary
+    Write-Host "  Compiling Go code..." -ForegroundColor Gray
     $env:CGO_ENABLED = "0"
     $env:GOOS = "linux"
     $env:GOARCH = "amd64"
+
+    # Optional: remove previous binary to avoid stale artifacts
+    if (Test-Path ".\manager") { Remove-Item ".\manager" -Force -ErrorAction SilentlyContinue }
+
     go build -o manager main.go
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  ✓ Go编译成功" -ForegroundColor Green
-    } else {
-        Write-Host "  ✗ Go编译失败" -ForegroundColor Red
+    if ($LASTEXITCODE -ne 0) {
         Pop-Location
-        exit 1
+        Fail "Go build failed (exit code $LASTEXITCODE)"
     }
-    
-    # 构建Docker镜像
+
+    # Build Docker image
     docker build -t tenant-operator:latest .
-    
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Tenant Operator 构建成功" -ForegroundColor Green
+        Write-Host "OK: Tenant Operator image built successfully" -ForegroundColor Green
     } else {
-        Write-Host "✗ Tenant Operator 构建失败" -ForegroundColor Red
         Pop-Location
-        exit 1
+        Fail "Tenant Operator image build failed (exit code $LASTEXITCODE)"
     }
-    
+
     Pop-Location
 } else {
-    Write-Host "⚠ Dockerfile不存在: tenant-operator/Dockerfile" -ForegroundColor Yellow
+    Write-Host "WARN: Dockerfile not found: $operatorDockerfile" -ForegroundColor Yellow
 }
 
-# 显示构建的镜像
-Write-Host "`n构建的镜像列表:" -ForegroundColor Cyan
+# Show built images
+Write-Host "`nBuilt images (filtered):" -ForegroundColor Cyan
 docker images | Select-String -Pattern "tenant-catalog|device-registry|medlogic-service|admin-ui|smart-gateway|tenant-operator"
 
-Write-Host "`n✓ 所有镜像构建完成" -ForegroundColor Green
-Write-Host "`n下一步: 部署到Minikube" -ForegroundColor Yellow
-Write-Host "  .\scripts\deploy-local.ps1" -ForegroundColor Gray
+Write-Host "`nDone: All images built." -ForegroundColor Green
+Write-Host "`nNext step: Deploy to minikube profile '$Profile'" -ForegroundColor Yellow
+Write-Host "  .\scripts\deploy-local.ps1 -Profile $Profile" -ForegroundColor Gray
