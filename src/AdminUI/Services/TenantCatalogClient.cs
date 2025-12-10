@@ -57,7 +57,7 @@ public class TenantDto
 {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
-    public TenantStatus Status { get; set; }
+    public string Status { get; set; } = string.Empty;
     public DatabaseConfigDto? DbConfig { get; set; }
     public ThrottlingConfigDto? Throttling { get; set; }
     public SloConfigDto? Slo { get; set; }

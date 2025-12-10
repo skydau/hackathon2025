@@ -26,6 +26,9 @@ builder.Services.AddHttpClient<DeviceRegistryClient>(client =>
     client.BaseAddress = new Uri(baseUrl);
 });
 
+// Register Kubernetes client for direct CRD operations
+builder.Services.AddScoped<KubernetesClient>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
