@@ -1,7 +1,6 @@
 @page "/tenants"
 @using AdminUI.Services
 @inject TenantCatalogClient TenantClient
-@inject KubernetesClient KubernetesClient
 @rendermode InteractiveServer
 
 <PageTitle>Tenants</PageTitle>
@@ -120,7 +119,7 @@ else
                         <td>@tenant.DisplayName</td>
                         <td>
                             <span class="badge @GetStatusBadgeClass(tenant.Status)">
-                                @tenant.Status
+                                @tenant.Status.ToString()
                             </span>
                         </td>
                         <td>@tenant.DbConfig?.Mode</td>
@@ -150,19 +149,7 @@ else
     private async Task LoadTenants()
     {
         isLoading = true;
-        // Get tenants from Kubernetes instead of Tenant Catalog
-        var k8sTenants = await KubernetesClient.GetTenantsAsync();
-        
-        // Convert to TenantDto format for display
-        tenants = k8sTenants.Select(t => new TenantDto
-        {
-            Id = t.Name,
-            DisplayName = t.DisplayName,
-            Status = t.Phase,
-            CreatedAt = t.CreatedAt,
-            UpdatedAt = t.CreatedAt
-        }).ToList();
-        
+        tenants = await TenantClient.GetTenantsAsync();
         isLoading = false;
     }
 
@@ -207,31 +194,13 @@ else
 
         try
         {
-            // Generate tenant name from display name
-            var tenantName = newTenant.DisplayName.ToLowerInvariant()
-                .Replace(" ", "-")
-                .Replace("_", "-");
-            
-            // Generate database name
-            var dbName = $"{tenantName.Replace("-", "_")}_DB";
-
-            // Create Kubernetes Tenant CRD directly
-            var success = await KubernetesClient.CreateTenantCRDAsync(
-                tenantName, 
-                newTenant.DisplayName, 
-                newTenant.DbConfig.Server, 
-                dbName);
-
-            if (success)
+            var result = await TenantClient.CreateTenantAsync(newTenant);
+            if (result != null)
             {
-                successMessage = $"Tenant '{newTenant.DisplayName}' created successfully! Database '{dbName}' will be provisioned automatically.";
+                successMessage = $"Tenant '{result.DisplayName}' created successfully with ID: {result.Id}";
                 await LoadTenants();
                 await Task.Delay(2000);
                 showCreateForm = false;
-            }
-            else
-            {
-                errorMessage = "Failed to create tenant. Please check the logs for details.";
             }
         }
         catch (Exception ex)
@@ -244,14 +213,14 @@ else
         }
     }
 
-    private string GetStatusBadgeClass(string status)
+    private string GetStatusBadgeClass(TenantStatus status)
     {
         return status switch
         {
-            "Ready" => "bg-success",
-            "Provisioning" => "bg-warning", 
-            "Failed" => "bg-danger",
-            "Decommissioned" => "bg-danger",
+            TenantStatus.Enabled => "bg-success",
+            TenantStatus.Provisioning => "bg-warning",
+            TenantStatus.Disabled => "bg-secondary",
+            TenantStatus.Decommissioned => "bg-danger",
             _ => "bg-secondary"
         };
     }

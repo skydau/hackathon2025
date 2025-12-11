@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AdminUI.Services;
 
@@ -13,10 +15,18 @@ public enum TenantStatus
 public class TenantCatalogClient
 {
     private readonly HttpClient _httpClient;
+    private readonly JsonSerializerOptions _jsonOptions;
 
     public TenantCatalogClient(HttpClient httpClient)
     {
         _httpClient = httpClient;
+        
+        // 配置 JSON 序列化选项，确保枚举以字符串形式序列化
+        _jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new JsonStringEnumConverter() }
+        };
     }
 
     public async Task<List<TenantDto>> GetTenantsAsync()
@@ -25,7 +35,7 @@ public class TenantCatalogClient
         {
             var response = await _httpClient.GetAsync("/api/tenants");
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<List<TenantDto>>() ?? new List<TenantDto>();
+            return await response.Content.ReadFromJsonAsync<List<TenantDto>>(_jsonOptions) ?? new List<TenantDto>();
         }
         catch
         {
@@ -37,7 +47,7 @@ public class TenantCatalogClient
     {
         try
         {
-            return await _httpClient.GetFromJsonAsync<TenantDto>($"/api/tenants/{id}");
+            return await _httpClient.GetFromJsonAsync<TenantDto>($"/api/tenants/{id}", _jsonOptions);
         }
         catch
         {
@@ -47,9 +57,9 @@ public class TenantCatalogClient
 
     public async Task<TenantDto?> CreateTenantAsync(CreateTenantRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync("/api/tenants", request);
+        var response = await _httpClient.PostAsJsonAsync("/api/tenants", request, _jsonOptions);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TenantDto>();
+        return await response.Content.ReadFromJsonAsync<TenantDto>(_jsonOptions);
     }
 }
 
@@ -57,7 +67,7 @@ public class TenantDto
 {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
+    public TenantStatus Status { get; set; }
     public DatabaseConfigDto? DbConfig { get; set; }
     public ThrottlingConfigDto? Throttling { get; set; }
     public SloConfigDto? Slo { get; set; }

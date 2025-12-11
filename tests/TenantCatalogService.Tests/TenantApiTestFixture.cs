@@ -19,15 +19,23 @@ public class TenantApiTestFixture : IDisposable
             {
                 builder.ConfigureServices(services =>
                 {
-                    // Remove the existing DbContext registration
-                    var descriptor = services.SingleOrDefault(
+                    // 移除现有的 DbContext 注册
+                    var dbContextDescriptor = services.SingleOrDefault(
                         d => d.ServiceType == typeof(DbContextOptions<TenantCatalogDbContext>));
-                    if (descriptor != null)
+                    if (dbContextDescriptor != null)
                     {
-                        services.Remove(descriptor);
+                        services.Remove(dbContextDescriptor);
                     }
                     
-                    // Add a new DbContext with a unique in-memory database
+                    // 移除现有的 TenantCatalogDbContext 注册
+                    var contextDescriptor = services.SingleOrDefault(
+                        d => d.ServiceType == typeof(TenantCatalogDbContext));
+                    if (contextDescriptor != null)
+                    {
+                        services.Remove(contextDescriptor);
+                    }
+                    
+                    // 添加新的 DbContext，使用唯一的内存数据库
                     services.AddDbContext<TenantCatalogDbContext>(options =>
                     {
                         options.UseInMemoryDatabase(_dbName);

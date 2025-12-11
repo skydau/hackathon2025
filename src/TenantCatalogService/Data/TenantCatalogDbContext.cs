@@ -20,31 +20,32 @@ public class TenantCatalogDbContext : DbContext
         modelBuilder.Entity<Tenant>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(50);
             entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Status).IsRequired();
+            // 配置枚举存储为字符串
+            entity.Property(e => e.Status)
+                  .IsRequired()
+                  .HasMaxLength(50)
+                  .HasConversion<string>();
+            
+            // 数据库配置字段
+            entity.Property(e => e.DbServer).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DbDatabase).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.DbUsername).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.DbPasswordRef).IsRequired().HasMaxLength(200);
+            
+            // 限流配置字段
+            entity.Property(e => e.ThrottlingRps);
+            
+            // SLO配置字段
+            entity.Property(e => e.SloAvailability).HasMaxLength(20);
+            entity.Property(e => e.SloP95LatencyMs);
+            
+            // 时间戳字段
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.UpdatedAt).IsRequired();
             
-            entity.OwnsOne(e => e.DbConfig, dbConfig =>
-            {
-                dbConfig.Property(d => d.Mode).IsRequired().HasMaxLength(20);
-                dbConfig.Property(d => d.Server).IsRequired().HasMaxLength(200);
-                dbConfig.Property(d => d.Database).IsRequired().HasMaxLength(100);
-                dbConfig.Property(d => d.Schema).HasMaxLength(100);
-                dbConfig.Property(d => d.CredentialRef).IsRequired().HasMaxLength(200);
-            });
-            
-            entity.OwnsOne(e => e.Throttling, throttling =>
-            {
-                throttling.Property(t => t.Rps).IsRequired();
-            });
-            
-            entity.OwnsOne(e => e.Slo, slo =>
-            {
-                slo.Property(s => s.Availability).HasMaxLength(20);
-                slo.Property(s => s.P95LatencyMs).IsRequired();
-            });
-            
+            // 索引
             entity.HasIndex(e => e.Status);
         });
         
@@ -52,13 +53,21 @@ public class TenantCatalogDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TenantId).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.Timestamp).IsRequired();
-            entity.Property(e => e.CpuCores).IsRequired();
-            entity.Property(e => e.MemoryGb).IsRequired();
-            entity.Property(e => e.StorageGb).IsRequired();
-            entity.Property(e => e.NetworkGb).IsRequired();
+            entity.Property(e => e.CpuUsage).HasColumnType("decimal(18,4)");
+            entity.Property(e => e.MemoryUsageMB).HasColumnType("decimal(18,4)");
+            entity.Property(e => e.StorageUsageGB).HasColumnType("decimal(18,4)");
+            entity.Property(e => e.NetworkUsageGB).HasColumnType("decimal(18,4)");
+            entity.Property(e => e.RecordedAt).IsRequired();
             
-            entity.HasIndex(e => new { e.TenantId, e.Timestamp });
+            // 索引
+            entity.HasIndex(e => e.TenantId);
+            entity.HasIndex(e => e.RecordedAt);
+            
+            // 外键关系
+            entity.HasOne<Tenant>()
+                  .WithMany()
+                  .HasForeignKey(e => e.TenantId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

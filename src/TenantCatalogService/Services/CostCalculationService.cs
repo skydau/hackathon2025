@@ -84,10 +84,10 @@ public class CostCalculationService : ICostCalculationService
 
     public async Task RecordResourceUsageAsync(ResourceUsage usage)
     {
-        usage.Id = Guid.NewGuid().ToString();
+        // Id 是自增字段，不需要手动设置
         await _usageRepository.CreateAsync(usage);
         
-        _logger.LogDebug("Recorded resource usage for tenant {TenantId} at {Timestamp}", 
+        _logger.LogDebug("记录租户 {TenantId} 在 {Timestamp} 的资源使用情况", 
             usage.TenantId, usage.Timestamp);
     }
 

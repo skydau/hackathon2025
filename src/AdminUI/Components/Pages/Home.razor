@@ -90,7 +90,7 @@
                                     <small class="text-muted">Created @tenant.CreatedAt.ToString("yyyy-MM-dd")</small>
                                 </div>
                                 <span class="badge @GetStatusBadgeClass(tenant.Status)">
-                                    @tenant.Status
+                                    @tenant.Status.ToString()
                                 </span>
                             </li>
                         }
@@ -145,26 +145,26 @@
     private async Task LoadDashboardData()
     {
         isLoading = true;
-        
+
         var tenants = await TenantClient.GetTenantsAsync();
         var devices = await DeviceClient.GetDevicesAsync();
-        
+
         tenantCount = tenants.Count;
         deviceCount = devices.Count;
-        activeTenantCount = tenants.Count(t => t.Status == "Ready");
+        activeTenantCount = tenants.Count(t => t.Status == TenantStatus.Enabled);
         recentTenants = tenants.OrderByDescending(t => t.CreatedAt).ToList();
-        
+
         isLoading = false;
     }
 
-    private string GetStatusBadgeClass(string status)
+    private string GetStatusBadgeClass(TenantStatus status)
     {
         return status switch
         {
-            "Ready" => "bg-success",
-            "Provisioning" => "bg-warning", 
-            "Failed" => "bg-danger",
-            "Decommissioned" => "bg-danger",
+            TenantStatus.Enabled => "bg-success",
+            TenantStatus.Provisioning => "bg-warning",
+            TenantStatus.Disabled => "bg-secondary",
+            TenantStatus.Decommissioned => "bg-danger",
             _ => "bg-secondary"
         };
     }

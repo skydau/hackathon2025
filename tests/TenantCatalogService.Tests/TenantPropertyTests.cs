@@ -53,23 +53,24 @@ public class TenantPropertyTests : IClassFixture<TenantApiTestFixture>
             {
                 var client = _factory.CreateClient();
                 
-                // Create tenant
+                // Create tenant - 创建租户
                 var createResponse = client.PostAsJsonAsync("/api/tenants", request).Result;
                 createResponse.EnsureSuccessStatusCode();
                 var createdTenant = createResponse.Content.ReadFromJsonAsync<TenantResponse>().Result;
                 
-                // Get tenant
+                // Get tenant - 获取租户
                 var getResponse = client.GetAsync($"/api/tenants/{createdTenant!.Id}").Result;
                 getResponse.EnsureSuccessStatusCode();
                 var retrievedTenant = getResponse.Content.ReadFromJsonAsync<TenantResponse>().Result;
                 
-                // Verify data consistency
+                // Verify data consistency - 验证数据一致性
                 return retrievedTenant != null &&
                        retrievedTenant.DisplayName == request.DisplayName &&
                        retrievedTenant.DbConfig.Mode == request.DbConfig.Mode &&
                        retrievedTenant.DbConfig.Server == request.DbConfig.Server &&
                        retrievedTenant.DbConfig.Database == request.DbConfig.Database &&
-                       retrievedTenant.DbConfig.CredentialRef == request.DbConfig.CredentialRef;
+                       retrievedTenant.DbConfig.CredentialRef == request.DbConfig.CredentialRef &&
+                       (request.Throttling == null || retrievedTenant.Throttling?.Rps == request.Throttling.Rps);
             });
     }
 
