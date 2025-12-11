@@ -30,8 +30,18 @@ try
     builder.Services.AddSwaggerGen();
 
     // Add DbContext
-    builder.Services.AddDbContext<TenantCatalogDbContext>(options =>
-        options.UseInMemoryDatabase("TenantCatalog"));
+    builder.Services.AddDbContext<TenantCatalogDbContext>(options =>{
+                var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            // Use in-memory database for development/testing
+            options.UseInMemoryDatabase("TenantCatalog");
+        }
+        else
+        {
+            options.UseSqlServer(connectionString);
+        }
+    });
 
     // Add repositories
     builder.Services.AddScoped<ITenantRepository, TenantRepository>();
