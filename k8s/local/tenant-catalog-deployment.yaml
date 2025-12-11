@@ -33,12 +33,7 @@ spec:
         env:
         # 数据库连接配置
         - name: ConnectionStrings__DefaultConnection
-          value: "Server=host.minikube.internal,1433;Database=MedLogicPlatform;User Id=sa;Password=$(SQL_SERVER_PASSWORD);TrustServerCertificate=True;Encrypt=True;"
-        - name: SQL_SERVER_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: sqlserver-admin-secret
-              key: password
+          value: "Server=172.19.112.1,1433;Database=MedLogicPlatform;User Id=sa;Password=md1599;TrustServerCertificate=True;Encrypt=True;"
         # ASP.NET Core配置
         - name: ASPNETCORE_ENVIRONMENT
           value: "Development"
