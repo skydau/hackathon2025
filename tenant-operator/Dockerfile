@@ -1,24 +1,25 @@
-# Build stage
-FROM golang:1.21 as builder
+# 构建阶段
+FROM golang:1.21 AS builder
 
 WORKDIR /workspace
 
-# Copy go mod files
+# 复制 go mod 文件
 COPY go.mod go.mod
 COPY go.sum go.sum
 
-# Download dependencies
+# 下载依赖
 RUN go mod download
 
-# Copy source code
+# 复制源代码
 COPY main.go main.go
 COPY api/ api/
 COPY controllers/ controllers/
+COPY pkg/ pkg/
 
-# Build
+# 构建
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
 
-# Runtime stage
+# 运行时阶段
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /workspace/manager .

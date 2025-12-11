@@ -1,4 +1,4 @@
-# 本地镜像构建脚本（PowerShell版本）
+﻿# 本地镜像构建脚本（PowerShell版本）
 # 构建所有平台服务的Docker镜像
 
 param(

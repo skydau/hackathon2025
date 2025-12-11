@@ -29,37 +29,37 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Database Mode</label>
-                    <InputSelect class="form-select" @bind-Value="newTenant.DbMode">
+                    <InputSelect class="form-select" @bind-Value="newTenant.DbConfig.Mode">
                         <option value="perDatabase">Database per Tenant</option>
                         <option value="perSchema">Schema per Tenant</option>
                     </InputSelect>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Database Server</label>
-                    <InputText class="form-control" @bind-Value="newTenant.DbServer" />
+                    <InputText class="form-control" @bind-Value="newTenant.DbConfig.Server" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Database Name</label>
-                    <InputText class="form-control" @bind-Value="newTenant.DbDatabase" />
+                    <InputText class="form-control" @bind-Value="newTenant.DbConfig.Database" />
                 </div>
-                @if (newTenant.DbMode == "perSchema")
+                @if (newTenant.DbConfig.Mode == "perSchema")
                 {
                     <div class="mb-3">
                         <label class="form-label">Schema Name</label>
-                        <InputText class="form-control" @bind-Value="newTenant.DbSchema" />
+                        <InputText class="form-control" @bind-Value="newTenant.DbConfig.Schema" />
                     </div>
                 }
                 <div class="mb-3">
                     <label class="form-label">Rate Limit (RPS)</label>
-                    <InputNumber class="form-control" @bind-Value="newTenant.ThrottlingRps" />
+                    <InputNumber class="form-control" @bind-Value="newTenant.Throttling!.Rps" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">SLO Availability (e.g., 99.9%)</label>
-                    <InputText class="form-control" @bind-Value="newTenant.SloAvailability" />
+                    <InputText class="form-control" @bind-Value="newTenant.Slo!.Availability" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">SLO P95 Latency (ms)</label>
-                    <InputNumber class="form-control" @bind-Value="newTenant.SloP95LatencyMs" />
+                    <InputNumber class="form-control" @bind-Value="newTenant.Slo!.P95LatencyMs" />
                 </div>
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-success" disabled="@isCreating">
@@ -118,7 +118,7 @@ else
                         <td>@tenant.DisplayName</td>
                         <td>
                             <span class="badge @GetStatusBadgeClass(tenant.Status)">
-                                @tenant.Status
+                                @tenant.Status.ToString()
                             </span>
                         </td>
                         <td>@tenant.DbConfig?.Mode</td>
@@ -157,10 +157,22 @@ else
         showCreateForm = true;
         newTenant = new CreateTenantRequest
         {
-            DbMode = "perDatabase",
-            ThrottlingRps = 100,
-            SloAvailability = "99.9%",
-            SloP95LatencyMs = 1000
+            DbConfig = new DatabaseConfigDto
+            {
+                Mode = "perDatabase",
+                Server = "localhost",
+                Database = "",
+                CredentialRef = "default-creds"
+            },
+            Throttling = new ThrottlingConfigDto
+            {
+                Rps = 100
+            },
+            Slo = new SloConfigDto
+            {
+                Availability = "99.9%",
+                P95LatencyMs = 1000
+            }
         };
         errorMessage = string.Empty;
         successMessage = string.Empty;
@@ -200,14 +212,14 @@ else
         }
     }
 
-    private string GetStatusBadgeClass(string status)
+    private string GetStatusBadgeClass(TenantStatus status)
     {
         return status switch
         {
-            "Enabled" => "bg-success",
-            "Provisioning" => "bg-warning",
-            "Disabled" => "bg-secondary",
-            "Decommissioned" => "bg-danger",
+            TenantStatus.Enabled => "bg-success",
+            TenantStatus.Provisioning => "bg-warning",
+            TenantStatus.Disabled => "bg-secondary",
+            TenantStatus.Decommissioned => "bg-danger",
             _ => "bg-secondary"
         };
     }

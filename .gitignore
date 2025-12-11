@@ -162,7 +162,7 @@ yarn-error.log*
 node_modules/
 
 # Build outputs
-dist/
+# dist/
 build/
 out/
 

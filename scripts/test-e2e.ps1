@@ -1,8 +1,8 @@
-# 端到端集成测试脚本
+﻿# 端到端集成测试脚本
 # 此脚本测试从租户创建到数据库自动配置的完整流程
 
 param(
-    [string]$TenantName = "test-hospital",
+    [string]$TenantName = "test-hospital", 
     [string]$SqlServerHost = "localhost",
     [string]$SqlServerPort = "1433",
     [string]$SqlServerUser = "sa",
@@ -177,9 +177,9 @@ function Test-SecretCreated {
         foreach ($field in $fields) {
             $value = kubectl get secret $secretName -n "tenant-$TenantName" -o jsonpath="{.data.$field}" 2>$null
             if ($value) {
-                Write-Success "  - $field: 存在"
+                Write-Success "  - ${field}: 存在"
             } else {
-                Write-Error-Message "  - $field: 缺失"
+                Write-Error-Message "  - ${field}: 缺失"
                 $allFieldsPresent = $false
             }
         }

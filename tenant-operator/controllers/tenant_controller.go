@@ -23,7 +23,7 @@ import (
 	"github.com/touchpoint-medical/tenant-operator/pkg/keyvault"
 )
 
-// TenantReconciler reconciles a Tenant object
+// TenantReconciler 协调 Tenant 对象
 type TenantReconciler struct {
 	client.Client
 	Scheme              *runtime.Scheme
@@ -44,11 +44,11 @@ const (
 	tenantFinalizerName = "tenants.medlogic.io/finalizer"
 )
 
-// Reconcile is part of the main kubernetes reconciliation loop
+// Reconcile 是主要的 kubernetes 协调循环的一部分
 func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the Tenant instance
+	// 获取 Tenant 实例
 	tenant := &tenantsv1.Tenant{}
 	err := r.Get(ctx, req.NamespacedName, tenant)
 	if err != nil {
@@ -60,12 +60,12 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	// Handle deletion
+	// 处理删除操作
 	if !tenant.ObjectMeta.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, tenant)
 	}
 
-	// Add finalizer if not present
+	// 如果不存在则添加 finalizer
 	if !containsString(tenant.ObjectMeta.Finalizers, tenantFinalizerName) {
 		tenant.ObjectMeta.Finalizers = append(tenant.ObjectMeta.Finalizers, tenantFinalizerName)
 		if err := r.Update(ctx, tenant); err != nil {
@@ -74,7 +74,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	// Set initial status if not set
+	// 如果未设置则设置初始状态
 	if tenant.Status.Phase == "" {
 		tenant.Status.Phase = "Provisioning"
 		if err := r.Status().Update(ctx, tenant); err != nil {
@@ -83,56 +83,56 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	// Handle decommissioning if status is set to Decommissioned
+	// 如果状态设置为 Decommissioned 则处理停用
 	if tenant.Status.Phase == "Decommissioned" {
 		return r.handleDecommissioning(ctx, tenant)
 	}
 
-	// Generate namespace name from tenant name
+	// 从租户名称生成命名空间名称
 	namespaceName := fmt.Sprintf("tenant-%s", tenant.Name)
 
-	// Create or update namespace
+	// 创建或更新命名空间
 	if err := r.reconcileNamespace(ctx, tenant, namespaceName); err != nil {
 		logger.Error(err, "Failed to reconcile namespace")
 		return ctrl.Result{}, err
 	}
 
-	// Create or update ConfigMap
+	// 创建或更新 ConfigMap
 	if err := r.reconcileConfigMap(ctx, tenant, namespaceName); err != nil {
 		logger.Error(err, "Failed to reconcile ConfigMap")
 		return ctrl.Result{}, err
 	}
 
-	// Create or update ResourceQuota
+	// 创建或更新 ResourceQuota
 	if err := r.reconcileResourceQuota(ctx, tenant, namespaceName); err != nil {
 		logger.Error(err, "Failed to reconcile ResourceQuota")
 		return ctrl.Result{}, err
 	}
 
-	// Create or update NetworkPolicy
+	// 创建或更新 NetworkPolicy
 	if err := r.reconcileNetworkPolicy(ctx, tenant, namespaceName); err != nil {
 		logger.Error(err, "Failed to reconcile NetworkPolicy")
 		return ctrl.Result{}, err
 	}
 
-	// Create or update RBAC
+	// 创建或更新 RBAC
 	if err := r.reconcileRBAC(ctx, tenant, namespaceName); err != nil {
 		logger.Error(err, "Failed to reconcile RBAC")
 		return ctrl.Result{}, err
 	}
 
-	// Create Key Vault secrets for tenant
+	// 为租户创建 Key Vault 密钥
 	if err := r.reconcileKeyVaultSecrets(ctx, tenant); err != nil {
 		logger.Error(err, "Failed to reconcile Key Vault secrets")
 		return ctrl.Result{}, err
 	}
 
-	// Provision database if DatabaseProvisioner is configured and database not yet created
+	// 如果配置了 DatabaseProvisioner 且数据库尚未创建，则配置数据库
 	if r.DatabaseProvisioner != nil && !tenant.Status.DatabaseCreated {
 		logger.Info("Provisioning database for tenant", "tenant", tenant.Name)
 		if err := r.DatabaseProvisioner.ProvisionDatabase(ctx, tenant); err != nil {
 			logger.Error(err, "Failed to provision database")
-			// Update status to Failed
+			// 更新状态为失败
 			tenant.Status.Phase = "Failed"
 			condition := metav1.Condition{
 				Type:               "DatabaseProvisioned",
@@ -149,7 +149,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 		logger.Info("Database provisioned successfully", "tenant", tenant.Name)
 
-		// Update status to indicate database and secret created
+		// 更新状态以指示数据库和密钥已创建
 		tenant.Status.DatabaseCreated = true
 		tenant.Status.SecretCreated = true
 		condition := metav1.Condition{
@@ -166,7 +166,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	// Update status to Ready
+	// 更新状态为就绪
 	tenant.Status.Phase = "Ready"
 	tenant.Status.NamespaceCreated = true
 	tenant.Status.ResourcesProvisioned = true
@@ -179,15 +179,15 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
-// handleDecommissioning handles the decommissioning flow for a tenant
+// handleDecommissioning 处理租户的停用流程
 func (r *TenantReconciler) handleDecommissioning(ctx context.Context, tenant *tenantsv1.Tenant) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting tenant decommissioning flow", "tenant", tenant.Name)
 
-	// Log audit event for decommissioning start
+	// 记录停用开始的审计事件
 	r.logAuditEvent(ctx, tenant, "DecommissioningStarted", "Tenant decommissioning flow initiated")
 
-	// Step 1: Create database backup
+	// 步骤 1: 创建数据库备份
 	if err := r.createDatabaseBackup(ctx, tenant); err != nil {
 		logger.Error(err, "Failed to create database backup")
 		r.logAuditEvent(ctx, tenant, "BackupFailed", fmt.Sprintf("Database backup failed: %v", err))
@@ -196,7 +196,7 @@ func (r *TenantReconciler) handleDecommissioning(ctx context.Context, tenant *te
 	logger.Info("Database backup created successfully", "tenant", tenant.Name)
 	r.logAuditEvent(ctx, tenant, "BackupCompleted", "Database backup created successfully")
 
-	// Step 2: Revoke Key Vault secrets
+	// 步骤 2: 撤销 Key Vault 密钥
 	if err := r.deleteKeyVaultSecrets(ctx, tenant); err != nil {
 		logger.Error(err, "Failed to revoke Key Vault secrets")
 		r.logAuditEvent(ctx, tenant, "SecretRevocationFailed", fmt.Sprintf("Secret revocation failed: %v", err))
@@ -205,12 +205,12 @@ func (r *TenantReconciler) handleDecommissioning(ctx context.Context, tenant *te
 	logger.Info("Key Vault secrets revoked successfully", "tenant", tenant.Name)
 	r.logAuditEvent(ctx, tenant, "SecretsRevoked", "All Key Vault secrets revoked successfully")
 
-	// Step 3: Delete namespace and all resources
+	// 步骤 3: 删除命名空间和所有资源
 	namespaceName := fmt.Sprintf("tenant-%s", tenant.Name)
 	namespace := &corev1.Namespace{}
 	err := r.Get(ctx, types.NamespacedName{Name: namespaceName}, namespace)
 	if err == nil {
-		// Namespace exists, delete it
+		// 命名空间存在，删除它
 		if err := r.Delete(ctx, namespace); err != nil && !errors.IsNotFound(err) {
 			logger.Error(err, "Failed to delete namespace")
 			r.logAuditEvent(ctx, tenant, "NamespaceDeletionFailed", fmt.Sprintf("Namespace deletion failed: %v", err))
@@ -220,32 +220,32 @@ func (r *TenantReconciler) handleDecommissioning(ctx context.Context, tenant *te
 		r.logAuditEvent(ctx, tenant, "NamespaceDeleted", fmt.Sprintf("Namespace %s deleted successfully", namespaceName))
 	}
 
-	// Log final audit event
+	// 记录最终审计事件
 	r.logAuditEvent(ctx, tenant, "DecommissioningCompleted", "Tenant decommissioning flow completed successfully")
 
 	logger.Info("Tenant decommissioning completed successfully", "tenant", tenant.Name)
 	return ctrl.Result{}, nil
 }
 
-// handleDeletion handles the deletion of a tenant and cleanup of resources
+// handleDeletion 处理租户的删除和资源清理
 func (r *TenantReconciler) handleDeletion(ctx context.Context, tenant *tenantsv1.Tenant) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Handling tenant deletion", "tenant", tenant.Name)
 
-	// Check if finalizer is present
+	// 检查是否存在 finalizer
 	if containsString(tenant.ObjectMeta.Finalizers, tenantFinalizerName) {
-		// Revoke and delete Key Vault secrets
+		// 撤销并删除 Key Vault 密钥
 		if err := r.deleteKeyVaultSecrets(ctx, tenant); err != nil {
 			logger.Error(err, "Failed to delete Key Vault secrets")
 			return ctrl.Result{}, err
 		}
 
-		// Delete namespace (this will cascade delete all resources in it)
+		// 删除命名空间（这将级联删除其中的所有资源）
 		namespaceName := fmt.Sprintf("tenant-%s", tenant.Name)
 		namespace := &corev1.Namespace{}
 		err := r.Get(ctx, types.NamespacedName{Name: namespaceName}, namespace)
 		if err == nil {
-			// Namespace exists, delete it
+			// 命名空间存在，删除它
 			if err := r.Delete(ctx, namespace); err != nil && !errors.IsNotFound(err) {
 				logger.Error(err, "Failed to delete namespace")
 				return ctrl.Result{}, err
@@ -253,7 +253,7 @@ func (r *TenantReconciler) handleDeletion(ctx context.Context, tenant *tenantsv1
 			logger.Info("Deleted tenant namespace", "namespace", namespaceName)
 		}
 
-		// Remove finalizer
+		// 移除 finalizer
 		tenant.ObjectMeta.Finalizers = removeString(tenant.ObjectMeta.Finalizers, tenantFinalizerName)
 		if err := r.Update(ctx, tenant); err != nil {
 			logger.Error(err, "Failed to remove finalizer")
@@ -264,35 +264,35 @@ func (r *TenantReconciler) handleDeletion(ctx context.Context, tenant *tenantsv1
 	return ctrl.Result{}, nil
 }
 
-// createDatabaseBackup creates a backup of the tenant's database
+// createDatabaseBackup 创建租户数据库的备份
 func (r *TenantReconciler) createDatabaseBackup(ctx context.Context, tenant *tenantsv1.Tenant) error {
 	logger := log.FromContext(ctx)
 
-	// In a real implementation, this would:
-	// 1. Connect to the database using the tenant's connection info
-	// 2. Execute a backup command (e.g., SQL Server BACKUP DATABASE)
-	// 3. Store the backup in Azure Blob Storage or similar
-	// 4. Verify the backup was successful
+	// 在实际实现中，这将：
+	// 1. 使用租户的连接信息连接到数据库
+	// 2. 执行备份命令（例如，SQL Server BACKUP DATABASE）
+	// 3. 将备份存储在 Azure Blob Storage 或类似服务中
+	// 4. 验证备份是否成功
 
-	// For now, we'll simulate the backup process
+	// 目前，我们将模拟备份过程
 	logger.Info("Creating database backup",
 		"tenant", tenant.Name,
 		"database", tenant.Spec.DB.Database,
 		"server", tenant.Spec.DB.Server)
 
-	// Simulate backup creation
-	// In production, this would be actual backup logic
+	// 模拟备份创建
+	// 在生产环境中，这将是实际的备份逻辑
 	backupName := fmt.Sprintf("%s-backup-%d", tenant.Name, metav1.Now().Unix())
 	logger.Info("Database backup created", "backupName", backupName)
 
 	return nil
 }
 
-// logAuditEvent logs an audit event for tenant operations
+// logAuditEvent 记录租户操作的审计事件
 func (r *TenantReconciler) logAuditEvent(ctx context.Context, tenant *tenantsv1.Tenant, eventType, message string) {
 	logger := log.FromContext(ctx)
 
-	// Log structured audit event
+	// 记录结构化审计事件
 	logger.Info("AUDIT",
 		"tenantId", tenant.Name,
 		"tenantDisplayName", tenant.Spec.DisplayName,
@@ -301,26 +301,26 @@ func (r *TenantReconciler) logAuditEvent(ctx context.Context, tenant *tenantsv1.
 		"timestamp", metav1.Now().Format("2006-01-02T15:04:05Z07:00"),
 	)
 
-	// In a production system, this would also:
-	// 1. Write to a dedicated audit log storage (e.g., Azure Log Analytics)
-	// 2. Send to a SIEM system
-	// 3. Create Kubernetes Events for visibility
-	// 4. Store in a persistent audit trail database
+	// 在生产系统中，这还将：
+	// 1. 写入专用的审计日志存储（例如，Azure Log Analytics）
+	// 2. 发送到 SIEM 系统
+	// 3. 创建 Kubernetes Events 以提高可见性
+	// 4. 存储在持久的审计跟踪数据库中
 }
 
-// reconcileKeyVaultSecrets creates database credentials in Key Vault for the tenant
+// reconcileKeyVaultSecrets 为租户在 Key Vault 中创建数据库凭据
 func (r *TenantReconciler) reconcileKeyVaultSecrets(ctx context.Context, tenant *tenantsv1.Tenant) error {
 	if r.KeyVaultClient == nil {
-		return nil // Skip if no Key Vault client configured
+		return nil // 如果未配置 Key Vault 客户端则跳过
 	}
 
-	// Generate database password if not exists
+	// 如果不存在则生成数据库密码
 	dbPasswordSecretName := fmt.Sprintf("%s-db-password", tenant.Name)
 
-	// Check if secret already exists
+	// 检查密钥是否已存在
 	_, err := r.KeyVaultClient.GetSecret(ctx, tenant.Name, dbPasswordSecretName)
 	if err != nil {
-		// Secret doesn't exist, create it
+		// 密钥不存在，创建它
 		password, err := generateSecurePassword(32)
 		if err != nil {
 			return fmt.Errorf("failed to generate password: %w", err)
@@ -334,31 +334,31 @@ func (r *TenantReconciler) reconcileKeyVaultSecrets(ctx context.Context, tenant 
 	return nil
 }
 
-// deleteKeyVaultSecrets revokes and deletes all Key Vault secrets for the tenant
+// deleteKeyVaultSecrets 撤销并删除租户的所有 Key Vault 密钥
 func (r *TenantReconciler) deleteKeyVaultSecrets(ctx context.Context, tenant *tenantsv1.Tenant) error {
 	if r.KeyVaultClient == nil {
-		return nil // Skip if no Key Vault client configured
+		return nil // 如果未配置 Key Vault 客户端则跳过
 	}
 
-	// Revoke database password secret
+	// 撤销数据库密码密钥
 	dbPasswordSecretName := fmt.Sprintf("%s-db-password", tenant.Name)
 
-	// Revoke the secret first
+	// 首先撤销密钥
 	if err := r.KeyVaultClient.RevokeSecret(ctx, tenant.Name, dbPasswordSecretName); err != nil {
-		// Log but don't fail if secret doesn't exist
+		// 记录但如果密钥不存在则不失败
 		log.FromContext(ctx).Info("Failed to revoke secret (may not exist)", "secret", dbPasswordSecretName, "error", err)
 	}
 
-	// Delete the secret
+	// 删除密钥
 	if err := r.KeyVaultClient.DeleteSecret(ctx, tenant.Name, dbPasswordSecretName); err != nil {
-		// Log but don't fail if secret doesn't exist
+		// 记录但如果密钥不存在则不失败
 		log.FromContext(ctx).Info("Failed to delete secret (may not exist)", "secret", dbPasswordSecretName, "error", err)
 	}
 
 	return nil
 }
 
-// generateSecurePassword generates a cryptographically secure random password
+// generateSecurePassword 生成加密安全的随机密码
 func generateSecurePassword(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
@@ -367,7 +367,7 @@ func generateSecurePassword(length int) (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes)[:length], nil
 }
 
-// containsString checks if a string slice contains a specific string
+// containsString 检查字符串切片是否包含特定字符串
 func containsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {
@@ -377,7 +377,7 @@ func containsString(slice []string, s string) bool {
 	return false
 }
 
-// removeString removes a string from a slice
+// removeString 从切片中移除字符串
 func removeString(slice []string, s string) []string {
 	result := []string{}
 	for _, item := range slice {
@@ -388,7 +388,7 @@ func removeString(slice []string, s string) []string {
 	return result
 }
 
-// reconcileNamespace creates or updates the tenant namespace
+// reconcileNamespace 创建或更新租户命名空间
 func (r *TenantReconciler) reconcileNamespace(ctx context.Context, tenant *tenantsv1.Tenant, namespaceName string) error {
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -412,7 +412,7 @@ func (r *TenantReconciler) reconcileNamespace(ctx context.Context, tenant *tenan
 		return err
 	}
 
-	// Update labels if needed
+	// 如果需要则更新标签
 	if found.Labels == nil {
 		found.Labels = make(map[string]string)
 	}
@@ -423,7 +423,7 @@ func (r *TenantReconciler) reconcileNamespace(ctx context.Context, tenant *tenan
 	return r.Update(ctx, found)
 }
 
-// reconcileConfigMap creates or updates the tenant configuration ConfigMap
+// reconcileConfigMap 创建或更新租户配置 ConfigMap
 func (r *TenantReconciler) reconcileConfigMap(ctx context.Context, tenant *tenantsv1.Tenant, namespaceName string) error {
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -452,12 +452,12 @@ func (r *TenantReconciler) reconcileConfigMap(ctx context.Context, tenant *tenan
 		return err
 	}
 
-	// Update data
+	// 更新数据
 	found.Data = configMap.Data
 	return r.Update(ctx, found)
 }
 
-// reconcileResourceQuota creates or updates the ResourceQuota for the tenant namespace
+// reconcileResourceQuota 为租户命名空间创建或更新 ResourceQuota
 func (r *TenantReconciler) reconcileResourceQuota(ctx context.Context, tenant *tenantsv1.Tenant, namespaceName string) error {
 	resourceQuota := &corev1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{
@@ -487,12 +487,12 @@ func (r *TenantReconciler) reconcileResourceQuota(ctx context.Context, tenant *t
 		return err
 	}
 
-	// Update spec
+	// 更新规格
 	found.Spec = resourceQuota.Spec
 	return r.Update(ctx, found)
 }
 
-// reconcileNetworkPolicy creates or updates the NetworkPolicy for tenant isolation
+// reconcileNetworkPolicy 为租户隔离创建或更新 NetworkPolicy
 func (r *TenantReconciler) reconcileNetworkPolicy(ctx context.Context, tenant *tenantsv1.Tenant, namespaceName string) error {
 	networkPolicy := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -560,12 +560,12 @@ func (r *TenantReconciler) reconcileNetworkPolicy(ctx context.Context, tenant *t
 		return err
 	}
 
-	// Update spec
+	// 更新规格
 	found.Spec = networkPolicy.Spec
 	return r.Update(ctx, found)
 }
 
-// reconcileRBAC creates or updates RBAC rules for the tenant namespace
+// reconcileRBAC 为租户命名空间创建或更新 RBAC 规则
 func (r *TenantReconciler) reconcileRBAC(ctx context.Context, tenant *tenantsv1.Tenant, namespaceName string) error {
 	roleBinding := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
@@ -598,13 +598,13 @@ func (r *TenantReconciler) reconcileRBAC(ctx context.Context, tenant *tenantsv1.
 		return err
 	}
 
-	// Update roleRef and subjects
+	// 更新 roleRef 和 subjects
 	found.RoleRef = roleBinding.RoleRef
 	found.Subjects = roleBinding.Subjects
 	return r.Update(ctx, found)
 }
 
-// SetupWithManager sets up the controller with the Manager.
+// SetupWithManager 使用 Manager 设置控制器
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tenantsv1.Tenant{}).

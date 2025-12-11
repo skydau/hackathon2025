@@ -1,4 +1,4 @@
-# 一键部署脚本（PowerShell版本）
+﻿# 一键部署脚本（PowerShell版本）
 # 将所有平台组件部署到本地Minikube集群
 
 param(

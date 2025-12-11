@@ -1,4 +1,4 @@
-# Minikube启动脚本（PowerShell版本）
+﻿# Minikube启动脚本（PowerShell版本）
 # 用于在Windows环境启动和配置Minikube
 
 param(

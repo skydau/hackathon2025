@@ -60,6 +60,28 @@ public class DevicesController : ControllerBase
     }
 
     /// <summary>
+    /// Get all registered devices
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<List<DeviceResponse>>> GetAllDevices()
+    {
+        var devices = await _deviceRepository.GetAllAsync();
+        
+        _logger.LogInformation("Retrieved {Count} devices", devices.Count());
+
+        var responses = devices.Select(device => new DeviceResponse
+        {
+            SerialNumber = device.SerialNumber,
+            TenantId = device.TenantId,
+            DeviceType = device.DeviceType,
+            RegisteredAt = device.RegisteredAt,
+            LastSeenAt = device.LastSeenAt
+        }).ToList();
+
+        return Ok(responses);
+    }
+
+    /// <summary>
     /// Get device information by serial number
     /// </summary>
     [HttpGet("{serialNumber}")]
