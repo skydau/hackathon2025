@@ -18,6 +18,7 @@ import (
 	"github.com/touchpoint-medical/tenant-operator/pkg/catalog"
 	"github.com/touchpoint-medical/tenant-operator/pkg/database"
 	"github.com/touchpoint-medical/tenant-operator/pkg/keyvault"
+	"github.com/touchpoint-medical/tenant-operator/pkg/medlogic"
 )
 
 var (
@@ -114,11 +115,30 @@ func main() {
 		setupLog.Info("Database Provisioner not configured (missing SQL Server credentials)")
 	}
 
+	// Initialize MedLogicSyncer
+	var medLogicSyncer *medlogic.MedLogicSyncer
+	medLogicSyncer, err = medlogic.NewMedLogicSyncer(setupLog)
+	if err != nil {
+		setupLog.Error(err, "Failed to initialize MedLogicSyncer - continuing without sync functionality")
+		medLogicSyncer = nil
+	} else {
+		setupLog.Info("MedLogicSyncer initialized successfully")
+		// Ensure cleanup on shutdown
+		defer func() {
+			if medLogicSyncer != nil {
+				if err := medLogicSyncer.Close(); err != nil {
+					setupLog.Error(err, "Failed to close MedLogicSyncer")
+				}
+			}
+		}()
+	}
+
 	if err = (&controllers.TenantReconciler{
 		Client:              mgr.GetClient(),
 		Scheme:              mgr.GetScheme(),
 		KeyVaultClient:      keyVaultClient,
 		DatabaseProvisioner: dbProvisioner,
+		MedLogicSyncer:      medLogicSyncer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Tenant")
 		os.Exit(1)

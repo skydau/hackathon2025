@@ -21,6 +21,7 @@ import (
 	tenantsv1 "github.com/touchpoint-medical/tenant-operator/api/v1"
 	"github.com/touchpoint-medical/tenant-operator/pkg/database"
 	"github.com/touchpoint-medical/tenant-operator/pkg/keyvault"
+	"github.com/touchpoint-medical/tenant-operator/pkg/medlogic"
 )
 
 // TenantReconciler reconciles a Tenant object
@@ -29,6 +30,7 @@ type TenantReconciler struct {
 	Scheme              *runtime.Scheme
 	KeyVaultClient      keyvault.Client
 	DatabaseProvisioner database.Provisioner
+	MedLogicSyncer      *medlogic.MedLogicSyncer
 }
 
 // +kubebuilder:rbac:groups=tenants.medlogic.io,resources=tenants,verbs=get;list;watch;create;update;patch;delete
@@ -164,6 +166,17 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			logger.Error(err, "Failed to update database status")
 			return ctrl.Result{}, err
 		}
+
+		// Sync tenant to MedLogicPlatform database
+		if r.MedLogicSyncer != nil {
+			logger.Info("Syncing tenant to MedLogicPlatform database", "tenant", tenant.Name)
+			if err := r.MedLogicSyncer.SyncTenant(ctx, tenant); err != nil {
+				logger.Error(err, "Failed to sync tenant to MedLogicPlatform database - continuing anyway")
+				// Don't fail the reconciliation if sync fails, just log the error
+			} else {
+				logger.Info("Successfully synced tenant to MedLogicPlatform database", "tenant", tenant.Name)
+			}
+		}
 	}
 
 	// Update status to Ready
@@ -234,6 +247,17 @@ func (r *TenantReconciler) handleDeletion(ctx context.Context, tenant *tenantsv1
 
 	// Check if finalizer is present
 	if containsString(tenant.ObjectMeta.Finalizers, tenantFinalizerName) {
+		// Delete tenant from MedLogicPlatform database
+		if r.MedLogicSyncer != nil {
+			logger.Info("Deleting tenant from MedLogicPlatform database", "tenant", tenant.Name)
+			if err := r.MedLogicSyncer.DeleteTenant(ctx, tenant.Name); err != nil {
+				logger.Error(err, "Failed to delete tenant from MedLogicPlatform database - continuing anyway")
+				// Don't fail the deletion if sync fails, just log the error
+			} else {
+				logger.Info("Successfully deleted tenant from MedLogicPlatform database", "tenant", tenant.Name)
+			}
+		}
+
 		// Revoke and delete Key Vault secrets
 		if err := r.deleteKeyVaultSecrets(ctx, tenant); err != nil {
 			logger.Error(err, "Failed to delete Key Vault secrets")

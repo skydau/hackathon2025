@@ -146,6 +146,21 @@ spec:
         # Tenant Catalog Service地址
         - name: TENANT_CATALOG_URL
           value: "http://tenant-catalog.platform-system.svc.cluster.local:8080"
+        # MedLogicPlatform数据库连接配置
+        - name: MEDLOGIC_DB_HOST
+          value: "host.minikube.internal,1433"
+        - name: MEDLOGIC_DB_NAME
+          value: "MedLogicPlatform"
+        - name: MEDLOGIC_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: username
+        - name: MEDLOGIC_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sqlserver-admin-secret
+              key: password
         # Operator配置
         - name: ENABLE_WEBHOOKS
           value: "false"
