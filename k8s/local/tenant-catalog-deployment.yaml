@@ -21,6 +21,7 @@ spec:
         app: tenant-catalog
         component: core-service
     spec:
+      serviceAccountName: tenant-catalog
       containers:
       - name: tenant-catalog
         # 使用本地构建的镜像
