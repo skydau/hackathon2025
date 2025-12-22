@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # SQL Server 数据库
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: medlogic-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrongPassword123!
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./scripts/sql:/docker-entrypoint-initdb.d
+    networks:
+      - medlogic-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrongPassword123! -Q 'SELECT 1'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Tenant Catalog Service
+  tenant-catalog:
+    build:
+      context: .
+      dockerfile: src/TenantCatalogService/Dockerfile
+    container_name: medlogic-tenant-catalog
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=MedLogicPlatform;User Id=sa;Password=YourStrongPassword123!;TrustServerCertificate=True;Encrypt=True;
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft.AspNetCore=Warning
+    ports:
+      - "8080:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - medlogic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  sqlserver_data:
+    driver: local
+
+networks:
+  medlogic-network:
+    driver: bridge

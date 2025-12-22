@@ -51,13 +51,14 @@ public class TenantDBRouter : IDisposable
         await connection.OpenAsync(cancellationToken);
 
         // Set schema for Schema-per-Tenant mode
-        if (dbConfig.Mode.Equals("perSchema", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(dbConfig.Schema))
-        {
-            using var command = connection.CreateCommand();
-            command.CommandText = $"SET SCHEMA '{dbConfig.Schema}'";
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
+        //if (dbConfig.Mode.Equals("perSchema", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(dbConfig.Schema))
+        //{
+        //    using var command = connection.CreateCommand();
+        //    command.CommandText = $"SET SCHEMA '{dbConfig.Schema}'";
+        //    await command.ExecuteNonQueryAsync(cancellationToken);
+        //}
 
+        // Only support Database-per-Tenant mode for now
         // Store in pool
         _connectionPools.TryAdd(tenantId, connection);
 

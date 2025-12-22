@@ -1,0 +1,177 @@
+version: '3.8'
+
+services:
+  # SQL Server 数据库
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: medlogic-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrongPassword123!
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./scripts/sql:/docker-entrypoint-initdb.d
+    networks:
+      - medlogic-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrongPassword123! -Q 'SELECT 1'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Tenant Catalog Service
+  tenant-catalog:
+    build:
+      context: .
+      dockerfile: src/TenantCatalogService/Dockerfile
+    container_name: medlogic-tenant-catalog
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=MedLogicPlatform;User Id=sa;Password=YourStrongPassword123!;TrustServerCertificate=True;Encrypt=True;
+    ports:
+      - "8080:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - medlogic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Device Registry Service
+  device-registry:
+    build:
+      context: .
+      dockerfile: src/DeviceRegistryService/Dockerfile
+    container_name: medlogic-device-registry
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8081
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=MedLogicPlatform;User Id=sa;Password=YourStrongPassword123!;TrustServerCertificate=True;Encrypt=True;
+      - Services__TenantCatalog=http://tenant-catalog:8080
+    ports:
+      - "8081:8081"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      tenant-catalog:
+        condition: service_healthy
+    networks:
+      - medlogic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MedLogic Service
+  medlogic-service:
+    build:
+      context: .
+      dockerfile: src/MedLogicService/Dockerfile
+    container_name: medlogic-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - Services__TenantCatalog=http://tenant-catalog:8080
+      - Services__DeviceRegistry=http://device-registry:8081
+    ports:
+      - "5000:5000"
+    depends_on:
+      tenant-catalog:
+        condition: service_healthy
+      device-registry:
+        condition: service_healthy
+    networks:
+      - medlogic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Smart Gateway (NGINX)
+  smart-gateway:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: medlogic-smart-gateway
+    environment:
+      - DEVICE_REGISTRY_URL=http://device-registry:8081
+      - BACKEND_SERVICE_URL=http://medlogic-service:5000
+    ports:
+      - "30000:80"
+    depends_on:
+      device-registry:
+        condition: service_healthy
+      medlogic-service:
+        condition: service_healthy
+    networks:
+      - medlogic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # MedDispense 配送站模拟器
+  med-dispense-simulator:
+    build:
+      context: .
+      dockerfile: tools/MedDispenseSimulator/Dockerfile
+    container_name: medlogic-simulator
+    environment:
+      - SmartGateway__BaseUrl=http://smart-gateway
+      - SmartGateway__Timeout=30
+      - Simulation__IntervalSeconds=10
+      - Simulation__BatchSize=2
+      - Simulation__RandomizeAmounts=true
+      - Simulation__MinAmount=10.00
+      - Simulation__MaxAmount=500.00
+    depends_on:
+      smart-gateway:
+        condition: service_healthy
+    networks:
+      - medlogic-network
+    restart: unless-stopped
+
+  # AdminUI (可选)
+  admin-ui:
+    build:
+      context: .
+      dockerfile: src/AdminUI/Dockerfile
+    container_name: medlogic-admin-ui
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5093
+      - Services__TenantCatalog=http://tenant-catalog:8080
+      - Services__DeviceRegistry=http://device-registry:8081
+    ports:
+      - "5093:5093"
+    depends_on:
+      tenant-catalog:
+        condition: service_healthy
+      device-registry:
+        condition: service_healthy
+    networks:
+      - medlogic-network
+
+volumes:
+  sqlserver_data:
+    driver: local
+
+networks:
+  medlogic-network:
+    driver: bridge
