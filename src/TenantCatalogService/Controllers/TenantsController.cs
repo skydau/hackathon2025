@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using TenantCatalogService.DTOs;
 using TenantCatalogService.Models;
 using TenantCatalogService.Repositories;
+using TenantCatalogService.Services;
 
 namespace TenantCatalogService.Controllers;
 
@@ -11,11 +12,13 @@ public class TenantsController : ControllerBase
 {
     private readonly ITenantRepository _repository;
     private readonly ILogger<TenantsController> _logger;
+    private readonly IKubernetesService _kubernetesService;
 
-    public TenantsController(ITenantRepository repository, ILogger<TenantsController> logger)
+    public TenantsController(ITenantRepository repository, ILogger<TenantsController> logger, IKubernetesService kubernetesService)
     {
         _repository = repository;
         _logger = logger;
+        _kubernetesService = kubernetesService;
     }
 
     [HttpPost]
@@ -36,6 +39,13 @@ public class TenantsController : ControllerBase
         var created = await _repository.CreateAsync(tenant);
         
         _logger.LogInformation("Created tenant {TenantId} with name {DisplayName}", created.Id, created.DisplayName);
+
+        // 创建Kubernetes Tenant CRD来触发tenant-operator
+        var crdCreated = await _kubernetesService.CreateTenantCRDAsync(created);
+        if (!crdCreated)
+        {
+            _logger.LogWarning("Failed to create Kubernetes Tenant CRD for tenant {TenantId}, but tenant was created in database", created.Id);
+        }
 
         var response = MapToResponse(created);
         return CreatedAtAction(nameof(GetTenant), new { id = created.Id }, response);
@@ -60,6 +70,21 @@ public class TenantsController : ControllerBase
         if (tenant == null)
         {
             _logger.LogWarning("Tenant {TenantId} not found", id);
+            return NotFound(new { error = "Tenant not found" });
+        }
+
+        return Ok(MapToResponse(tenant));
+    }
+
+    [HttpGet("by-name/{displayName}")]
+    public async Task<ActionResult<TenantResponse>> GetTenantByDisplayName(string displayName)
+    {
+        var tenants = await _repository.GetAllAsync();
+        var tenant = tenants.FirstOrDefault(t => t.DisplayName.Equals(displayName, StringComparison.OrdinalIgnoreCase));
+        
+        if (tenant == null)
+        {
+            _logger.LogWarning("Tenant with display name {DisplayName} not found", displayName);
             return NotFound(new { error = "Tenant not found" });
         }
 

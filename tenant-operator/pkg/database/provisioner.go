@@ -136,19 +136,25 @@ func (p *DatabaseProvisioner) ProvisionDatabase(ctx context.Context, tenant *ten
 
 	// 9. 将数据库配置注册到Tenant Catalog
 	if p.catalogClient != nil {
-		secretName := fmt.Sprintf("tenant-%s-db-secret", tenant.Name)
-		username := fmt.Sprintf("%s_user", sanitizeName(tenant.Name))
-		dbConfig := catalog.DatabaseConfig{
-			Server:      p.sqlServerHost,
-			Database:    dbName,
-			Username:    username,
-			PasswordRef: secretName,
-		}
-		if err := p.catalogClient.UpdateTenantDbConfig(ctx, tenant.Name, dbConfig); err != nil {
-			logger.Error(err, "Failed to register database config to Tenant Catalog (non-fatal)")
-			// 不回滚，因为数据库已创建成功
+		// 首先通过displayName获取tenant的真实ID
+		tenantInfo, err := p.catalogClient.GetTenantByDisplayName(ctx, tenant.Spec.DisplayName)
+		if err != nil {
+			logger.Error(err, "Failed to get tenant info from Tenant Catalog (non-fatal)")
 		} else {
-			logger.Info("Database config registered to Tenant Catalog successfully")
+			secretName := fmt.Sprintf("tenant-%s-db-secret", tenant.Name)
+			username := fmt.Sprintf("%s_user", sanitizeName(tenant.Name))
+			dbConfig := catalog.DatabaseConfig{
+				Server:      p.sqlServerHost,
+				Database:    dbName,
+				Username:    username,
+				PasswordRef: secretName,
+			}
+			if err := p.catalogClient.UpdateTenantDbConfig(ctx, tenantInfo.ID, dbConfig); err != nil {
+				logger.Error(err, "Failed to register database config to Tenant Catalog (non-fatal)")
+				// 不回滚，因为数据库已创建成功
+			} else {
+				logger.Info("Database config registered to Tenant Catalog successfully", "tenantId", tenantInfo.ID)
+			}
 		}
 	}
 

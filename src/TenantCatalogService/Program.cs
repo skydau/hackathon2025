@@ -58,6 +58,7 @@ try
 
     // Add services
     builder.Services.AddScoped<ICostCalculationService, CostCalculationService>();
+    builder.Services.AddScoped<IKubernetesService, KubernetesService>();
 
     // Add health checks
     builder.Services.AddHealthChecks();
